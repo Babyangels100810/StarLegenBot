@@ -27,8 +27,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 COUNTER_FILE = os.path.join(DATA_DIR, "customer_counter.json")
 
 # Banner image (put your file here: media/banners/bunny.jpg)
-BANNER_PATH = os.path.join(BASE_DIR, "media", "bunny.jpg")
-
+BANNER_PATH = os.path.join(BASE_DIR, "bunny.jpg")
 def _load_counter() -> int:
     try:
         with open(COUNTER_FILE, "r", encoding="utf-8") as f:
@@ -93,15 +92,22 @@ WELCOME_TEMPLATE = (
 )
 
 def send_welcome(chat_id: int, customer_no: int):
-    """Sends bunny.jpg + caption. If file missing, falls back to text (չի խափանում)."""
     text = WELCOME_TEMPLATE.format(customer_no=customer_no)
     try:
         with open(BANNER_PATH, "rb") as ph:
             bot.send_photo(chat_id, ph, caption=text, reply_markup=build_main_menu())
             return
     except Exception as e:
-        print(f"[warn] bunny.jpg not found at {BANNER_PATH}: {e}")
+        print("BANNER ERROR:", e)
     bot.send_message(chat_id, text, reply_markup=build_main_menu())
+@bot.message_handler(commands=["test_banner"])
+def test_banner(m: types.Message):
+    try:
+        with open(BANNER_PATH, "rb") as ph:
+            bot.send_photo(m.chat.id, ph, caption="OK banner")
+    except Exception as e:
+        bot.send_message(m.chat.id, f"Banner fail: {e}")
+
 
 # ---------- /start ----------
 @bot.message_handler(commands=["start"])
