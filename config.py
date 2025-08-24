@@ -3,7 +3,7 @@ import os
 
 # Bot token — պահիր Env Var-ում (Render/Railway):
 # TELEGRAM_TOKEN
-BOT_TOKEN = os.getenv( "7198636747:AAEUNsaiMZXweWcLZoQcxocZKKLhxapCszM", "").strip()
+BOT_TOKEN = os.getenv( "8054385688:AAG1rSbhOeZmGZ5ZFIeCEZZhxOpnQdbK5ZM", "").strip()
 
 # Հոսթը ավտոմատ վերցնենք հարթակից.
 # Render → RENDER_EXTERNAL_URL, Railway → RAILWAY_PUBLIC_DOMAIN
@@ -20,3 +20,4 @@ else:
 
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL  = WEBHOOK_HOST + WEBHOOK_PATH
+
