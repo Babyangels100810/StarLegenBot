@@ -6,6 +6,12 @@ import os, json, time, traceback
 from datetime import datetime
 from telebot import TeleBot, types
 load_dotenv()
+# test_token.py
+from telebot import TeleBot
+token = "8054385688:AAG1rSbhOeZmGZ5ZFIeCEZZhxOpnQdbK5ZM"
+bot = TeleBot(token)
+me = bot.get_me()
+print(me.username, me.id)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or SETTINGS.get("bot_token")
 # ԱՅՍՏԵՂ ՏԵՂԱԴՐԻ՛ այս տողը 👇
