@@ -1,26 +1,23 @@
-# =============== main.py v1 — Core + Menu + Good Thoughts + Ads ===============
-# PyTelegramBotAPI (telebot) լուծում
-# pip install pytelegrambotapi
-
-import os
-import json
-import time
-import traceback
+import os, json, time, traceback
 from datetime import datetime
 from telebot import TeleBot, types
-from dotenv import load_dotenv   # ← ԱՅՍՏԵՂ
-# .env բեռնենք և կարդանք token-ը
-load_dotenv()  # կարևոր է, որպեսզի .env-ն ընթերցվի
-from telebot import TeleBot
+from dotenv import load_dotenv
+from telebot import apihelper
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# դեպի Telegram API ճիշտ URL
+apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
+
+# կարդում ենք .env-ը
+load_dotenv()
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
+
 bot = TeleBot(BOT_TOKEN)
 
-# Debug prints
+# debug
 print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
-
 me = bot.get_me()
 print("Connected as:", me.username, me.id)
+
 
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env file.")
@@ -886,6 +883,8 @@ def placeholders(m: types.Message):
 # ------------------- RUN -------------------
 if __name__ == "__main__":
     print("Bot is running...")
-    bot.infinity_polling(skip_pending=True, timeout=30)
+    bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+
+
 
 
