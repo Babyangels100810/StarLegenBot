@@ -340,18 +340,25 @@ def on_good_thoughts_cb(c: types.CallbackQuery):
                 reply_markup=kb,
                 parse_mode="HTML"
             )
+
         elif action in ("like", "save") and len(parts) == 3:
             bot.answer_callback_query(c.id, "Գրանցվեց ✅")
+
         elif action == "new":
             user_id = c.from_user.id
             # rate-limit
             if rate_limited(user_id, "gt_submit", RL_THOUGHT_SUBMIT_SEC):
                 bot.answer_callback_query(c.id, "Խնդրում ենք փորձել ավելի ուշ։")
                 return
+
             USER_STATE[user_id] = STATE_GT_TEXT
             USER_FORM[user_id] = {}
             bot.answer_callback_query(c.id)
-            bot.send_message(c.message.chat.id, "✍️ Գրեք ձեր մտածումը/ասույթը ամբողջությամբ (մինչև 400 նիշ):")
+            bot.send_message(
+                c.message.chat.id,
+                "✍️ Գրեք ձեր մտածումը/ասույթը ամբողջությամբ (մինչև 400 նիշ):"
+            )
+
         elif action == "share" and len(parts) == 3:
             tid = parts[2]
             item = None
@@ -363,9 +370,13 @@ def on_good_thoughts_cb(c: types.CallbackQuery):
                 bot.answer_callback_query(c.id, "Չի գտնվել։")
                 return
             # compose share text
-            share_txt = f"🧠 Լավ միտք՝\n\n{item['text']}\n\nՄիացիր մեր բոտին 👉 {bot_link_with_ref(c.from_user.id)}"
+            share_txt = (
+                f"🧠 Լավ միտք՝\n\n{item['text']}\n\n"
+                f"Միացիր մեր բոտին 👉 {bot_link_with_ref(c.from_user.id)}"
+            )
             bot.answer_callback_query(c.id)
             do_share_message(c.message.chat.id, share_txt)
+
         elif action == "home":
             bot.edit_message_text(
                 chat_id=c.message.chat.id,
@@ -374,6 +385,7 @@ def on_good_thoughts_cb(c: types.CallbackQuery):
                 parse_mode="HTML"
             )
             bot.send_message(c.message.chat.id, "Ընտրեք բաժին 👇", reply_markup=build_main_menu())
+
     except Exception as e:
         print("GOOD THOUGHTS NAV ERROR:", e)
         bot.answer_callback_query(c.id, "Սխալ տեղի ունեցավ")
@@ -819,4 +831,4 @@ def placeholders(m: types.Message):
 # ------------------- RUN -------------------
 if __name__ == "__main__":
     print("Bot is running...")
-    bot.infinity_polling(timeout=60, long_polling_timeout=30)
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=30)
