@@ -11,10 +11,16 @@ from telebot import TeleBot, types
 from dotenv import load_dotenv   # ← ԱՅՍՏԵՂ
 # .env բեռնենք և կարդանք token-ը
 load_dotenv()  # կարևոր է, որպեսզի .env-ն ընթերցվի
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
+from telebot import TeleBot
 
-# debug՝ տեսնենք ինչ է կարդացվել (մասկավորված)
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+bot = TeleBot(BOT_TOKEN)
+
+# Debug prints
 print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
+
+me = bot.get_me()
+print("Connected as:", me.username, me.id)
 
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env file.")
@@ -881,4 +887,3 @@ def placeholders(m: types.Message):
 if __name__ == "__main__":
     print("Bot is running...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=30)
-
