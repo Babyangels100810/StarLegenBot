@@ -2,12 +2,14 @@
 # PyTelegramBotAPI (telebot) լուծում
 # pip install pytelegrambotapi
 
-import os, json, time, traceback
+import os
+import json
+import time
+import traceback
 from datetime import datetime
 from telebot import TeleBot, types
+from dotenv import load_dotenv   # ← ԱՅՍՏԵՂ
 load_dotenv()
-# test_token.py
-from telebot import TeleBot
 token = "8054385688:AAG1rSbhOeZmGZ5ZFIeCEZZhxOpnQdbK5ZM"
 bot = TeleBot(token)
 me = bot.get_me()
