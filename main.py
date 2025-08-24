@@ -5,7 +5,13 @@
 import os, json, time, traceback
 from datetime import datetime
 from telebot import TeleBot, types
+load_dotenv()
 
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or SETTINGS.get("bot_token")
+# ԱՅՍՏԵՂ ՏԵՂԱԴՐԻ՛ այս տողը 👇
+print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
+
+bot = telebot.TeleBot(BOT_TOKEN)
 # ------------------- CONFIG / CONSTANTS -------------------
 DATA_DIR = "data"
 MEDIA_DIR = "media"
@@ -20,7 +26,7 @@ ADS_FILE = os.path.join(DATA_DIR, "ads.json")
 PENDING_ADS_FILE = os.path.join(DATA_DIR, "pending_ads.json")
 
 # --- Admin ---
-ADMIN_ID = 123456789  # քո ադմին ID
+ADMIN_ID = 6822052289  # քո ադմին ID
 
 # --- Rate limits (anti-spam) ---
 RL_THOUGHT_SUBMIT_SEC = 180   # 1 հայտ / 3 րոպե
