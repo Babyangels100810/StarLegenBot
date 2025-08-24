@@ -9,17 +9,27 @@ import traceback
 from datetime import datetime
 from telebot import TeleBot, types
 from dotenv import load_dotenv   # ← ԱՅՍՏԵՂ
-load_dotenv()
-token = "8054385688:AAG1rSbhOeZmGZ5ZFIeCEZZhxOpnQdbK5ZM"
-bot = TeleBot(token)
-me = bot.get_me()
-print(me.username, me.id)
+# .env բեռնենք և կարդանք token-ը
+load_dotenv()  # կարևոր է, որպեսզի .env-ն ընթերցվի
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or SETTINGS.get("bot_token")
-# ԱՅՍՏԵՂ ՏԵՂԱԴՐԻ՛ այս տողը 👇
+# debug՝ տեսնենք ինչ է կարդացվել (մասկավորված)
 print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+if not BOT_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env file.")
+
+bot = TeleBot(BOT_TOKEN)
+
+# արագ ստուգում՝ token-ը աշխատո՞ւմ է
+from telebot.apihelper import ApiTelegramException
+try:
+    me = bot.get_me()
+    print("Connected as:", me.username, me.id)
+except ApiTelegramException as e:
+    print("TOKEN FAIL:", e)
+    raise
+
 # ------------------- CONFIG / CONSTANTS -------------------
 DATA_DIR = "data"
 MEDIA_DIR = "media"
@@ -871,3 +881,4 @@ def placeholders(m: types.Message):
 if __name__ == "__main__":
     print("Bot is running...")
     bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=30)
+
