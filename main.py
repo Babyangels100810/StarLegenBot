@@ -10,6 +10,10 @@ apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
 # կարդում ենք .env-ը
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
+from dotenv import find_dotenv
+print("dotenv path:", find_dotenv())
+print("BOT_TOKEN raw:", repr(BOT_TOKEN))   # կտեսնենք եթե կա \n, space, կամ չակերտ
+print("BOT_TOKEN len:", len(BOT_TOKEN))
 
 bot = TeleBot(BOT_TOKEN)
 
