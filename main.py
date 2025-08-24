@@ -886,6 +886,6 @@ def placeholders(m: types.Message):
 # ------------------- RUN -------------------
 if __name__ == "__main__":
     print("Bot is running...")
-    bot.remove_webhook()   # մաքրում ենք հին webhook-ը
-bot.infinity_polling(skip_pending=True, timeout=30)
+    bot.infinity_polling(skip_pending=True, timeout=30)
+
 
