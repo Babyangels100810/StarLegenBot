@@ -174,6 +174,31 @@ def build_main_menu() -> types.ReplyKeyboardMarkup:
     markup.add(BTN_BONUS, BTN_ADS)
     markup.add(BTN_INVITE)
     return markup
+def send_welcome(message: types.Message):
+    user_id = message.from_user.id
+    global customer_counter
+    customer_counter += 1
+    save_counter(customer_counter)
+    customer_no = customer_counter
+
+    markup = build_main_menu()
+    text = welcome_text(customer_no)
+
+    # Սկզբում նապաստակի նկարը
+    try:
+        with open("media/bunny.jpg", "rb") as photo:
+            bot.send_photo(message.chat.id, photo)
+
+    except Exception as e:
+        print("Bunny image not found:", e)
+
+    # Հետո արդեն տեքստը
+    bot.send_message(
+        message.chat.id,
+        text,
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
 
 def get_username_or_id(u) -> str:
     uname = getattr(u, "username", None)
