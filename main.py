@@ -1101,6 +1101,9 @@ PRODUCTS = {
     },
 }
 
+# Օգտակար՝ ըստ կատեգորիայի վերցնել կոդերը
+def product_codes_by_category(cat_key):
+    return [code for code, p in PRODUCTS.items() if p["category"] == cat_key]
 
 # ---------------------------
 @bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
