@@ -1,29 +1,66 @@
 import os, json, time, traceback
 from datetime import datetime
 from telebot import TeleBot, types
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from telebot import apihelper
 from telebot.types import InputMediaPhoto
 from collections import defaultdict
+
 # դեպի Telegram API ճիշտ URL
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
 
-# կարդում ենք .env-ը
+# .env
 load_dotenv()
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
-from dotenv import find_dotenv
+ENV_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
 print("dotenv path:", find_dotenv())
-print("BOT_TOKEN raw:", repr(BOT_TOKEN))   # կտեսնենք եթե կա \n, space, կամ չակերտ
-print("BOT_TOKEN len:", len(BOT_TOKEN))
+print("BOT_TOKEN raw:", repr(ENV_TOKEN))
+print("BOT_TOKEN len:", len(ENV_TOKEN))
 
+# ------------------- CONFIG / CONSTANTS -------------------
+DATA_DIR = "data"
+MEDIA_DIR = "media"
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+THOUGHTS_FILE = os.path.join(DATA_DIR, "thoughts.json")
+PENDING_THOUGHTS_FILE = os.path.join(DATA_DIR, "pending_thoughts.json")
+ADS_FILE = os.path.join(DATA_DIR, "ads.json")
+PENDING_ADS_FILE = os.path.join(DATA_DIR, "pending_ads.json")
 
-# debug
-print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
-print("Connected as:", me.username, me.id)
+ADMIN_ID = 6822052289
+RL_THOUGHT_SUBMIT_SEC = 180
+RL_AD_SUBMIT_SEC = 300
 
+# (մնացած կոնստանտներդ՝ STATES, BUTTONS, …)
 
+# ------------------- HELPERS: FILE IO -------------------
+def ensure_dirs():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_DIR, "exchange"), exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_DIR, "products"), exist_ok=True)
+
+# load_json, save_json, reload_all, persist_all ... (ինչպես ունես)
+
+# ------------------- BOT INIT -------------------
+ensure_dirs()
+reload_all()
+
+# token՝ ENV > SETTINGS
+BOT_TOKEN = ENV_TOKEN or (SETTINGS.get("bot_token") or "")
 if not BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env file.")
+    raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env or settings.json")
+
+bot = TeleBot(BOT_TOKEN, parse_mode=None)
+
+# debug info՝ bot ստեղծելուց ՀԵՏՈ
+try:
+    me = bot.get_me()
+    print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
+    print("Connected as:", me.username, me.id)
+except Exception as e:
+    print("TOKEN FAIL:", e)
+    raise
+
 
 bot = TeleBot(BOT_TOKEN)
 
