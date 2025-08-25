@@ -43,7 +43,6 @@ def ensure_dirs():
 
 # ------------------- BOT INIT -------------------
 ensure_dirs()
-reload_all()
 
 # token՝ ENV > SETTINGS
 BOT_TOKEN = ENV_TOKEN or (SETTINGS.get("bot_token") or "")
