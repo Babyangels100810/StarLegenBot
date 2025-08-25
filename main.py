@@ -16,11 +16,9 @@ print("dotenv path:", find_dotenv())
 print("BOT_TOKEN raw:", repr(BOT_TOKEN))   # կտեսնենք եթե կա \n, space, կամ չակերտ
 print("BOT_TOKEN len:", len(BOT_TOKEN))
 
-bot = TeleBot(BOT_TOKEN)
 
 # debug
 print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
-me = bot.get_me()
 print("Connected as:", me.username, me.id)
 
 
@@ -28,15 +26,6 @@ if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env file.")
 
 bot = TeleBot(BOT_TOKEN)
-
-# արագ ստուգում՝ token-ը աշխատո՞ւմ է
-from telebot.apihelper import ApiTelegramException
-try:
-    me = bot.get_me()
-    print("Connected as:", me.username, me.id)
-except ApiTelegramException as e:
-    print("TOKEN FAIL:", e)
-    raise
 
 # ------------------- CONFIG / CONSTANTS -------------------
 DATA_DIR = "data"
@@ -1372,12 +1361,48 @@ def _apply_stock(order):
             PRODUCTS[code]["stock"] = max(0, PRODUCTS[code]["stock"] - qty)
         if code in PRODUCTS and "sold" in PRODUCTS[code]:
             PRODUCTS[code]["sold"] = PRODUCTS[code]["sold"] + qty
+def _slider_kb(code: str, idx: int, total: int):
+    left  = types.InlineKeyboardButton("◀️", callback_data=f"slider:{code}:{(idx-1)%total}")
+    right = types.InlineKeyboardButton("▶️", callback_data=f"slider:{code}:{(idx+1)%total}")
+    row1 = [left, right]
 
-# 🧺 Cart inline կոճակներ ապրանքի էջում՝ ԱՅՍՏԵՂ Արդեն կանչվում են քո _slider_kb-ում
-# _slider_kb-ում ես արդեն ունեմ.
-#  types.InlineKeyboardButton("➕ Ավելացնել զամբյուղ", callback_data=f"cart:add:{code}")
-#  types.InlineKeyboardButton("🧺 Դիտել զամբյուղ", callback_data="cart:show")
-# եթե չունես, ավելացրու այնտեղ (քո _slider_kb-ում), ինչպես ավելի վաղ արեցինք
+    # 🧺 Ավելացրենք զամբյուղի կոճակները
+    row_cart = [
+        types.InlineKeyboardButton("➕ Ավելացնել զամբյուղ", callback_data=f"cart:add:{code}"),
+        types.InlineKeyboardButton("🧺 Դիտել զամբյուղ", callback_data="cart:show"),
+    ]
+
+    row2 = [
+        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+    ]
+    kb = types.InlineKeyboardMarkup()
+    kb.row(*row1)
+    kb.row(*row_cart)   # ← ԱՅՍ ՏՈՂԸ ՆՈՐՆ Է
+    kb.row(*row2)
+    return kb
+@bot.message_handler(func=lambda m: m.text == "🛒 Զամբյուղ")
+def open_cart_from_menu(m: types.Message):
+    uid = m.from_user.id
+    kb = types.InlineKeyboardMarkup()
+    for code, qty in list(CART[uid].items())[:6]:
+        title = PRODUCTS[code]["title"]
+        kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
+        kb.row(
+            types.InlineKeyboardButton("➖", callback_data=f"cart:dec:{code}"),
+            types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
+            types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}"),
+        )
+    kb.row(
+        types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
+        types.InlineKeyboardButton("🧾 Ճանապարհել պատվեր", callback_data="checkout:start"),
+    )
+    kb.row(
+        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+    )
+    bot.send_message(m.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="Markdown")
+
 
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cart:"))
 def cart_callbacks(c: types.CallbackQuery):
