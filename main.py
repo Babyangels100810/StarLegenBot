@@ -913,11 +913,128 @@ def car_accessories(m: types.Message):
 
 
 # 🏠 Կենցաղային պարագաներ
+# ---------------------------
+# 📦 ՏՎՅԱԼՆԵՐ — 11 գորգ (BA100810–BA100820)
+# ---------------------------
+PRODUCTS = {
+    "BA100810": {
+        "title": "Գորգ – BA100810",
+        "category": "home",
+        "img": "media/products/BA100810.jpg",
+        "old_price": 2560,
+        "price": 1690,
+        "size": "40×60 սմ",
+        "sold": 320,       # fake sold count (սկզբնական)
+        "best": True,      # եթե ուզում ես՝ նշի որպես լավագույն
+        "desc": "Չքնաղ թարմացված դիզայն • Հեշտ լվացվող և դիմացկուն"
+    },
+    "BA100811": {"title": "Գորգ – BA100811", "category": "home", "img": "media/products/BA100811.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 295, "best": True, "desc": "Կոմֆորտային հաստություն • հակասահող հիմք"},
+    "BA100812": {"title": "Գորգ – BA100812", "category": "home", "img": "media/products/BA100812.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 241, "best": False, "desc": "Գեղեցիկ թիթեռ-ծաղիկ դիզայն • հեշտ մաքրում"},
+    "BA100813": {"title": "Գորգ – BA100813", "category": "home", "img": "media/products/BA100813.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 198, "best": False, "desc": "Դիմացկուն կտոր • հարմար միջանցքների համար"},
+    "BA100814": {"title": "Գորկ – BA100814", "category": "home", "img": "media/products/BA100814.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 175, "best": False, "desc": "Փափուկ մակերես • հեշտ չորանում"},
+    "BA100815": {"title": "Գորգ – BA100815", "category": "home", "img": "media/products/BA100815.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 210, "best": False, "desc": "Խիտ գործվածք • գունային կայունություն"},
+    "BA100816": {"title": "Գորգ – BA100816", "category": "home", "img": "media/products/BA100816.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 233, "best": False, "desc": "Դեկորատիվ եզրեր • չի սահում հատակին"},
+    "BA100817": {"title": "Գորգ – BA100817", "category": "home", "img": "media/products/BA100817.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 221, "best": False, "desc": "Հարմար խոհանոցի/մուտքի համար"},
+    "BA100818": {"title": "Գորգ – BA100818", "category": "home", "img": "media/products/BA100818.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 187, "best": False, "desc": "Կոմպակտ չափ • հեշտ լվացք"},
+    "BA100819": {"title": "Գորգ – BA100819", "category": "home", "img": "media/products/BA100819.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 205, "best": False, "desc": "Կոկիկ տեսք • հարմար թաց սենյակների համար"},
+    "BA100820": {"title": "Գորգ – BA100820", "category": "home", "img": "media/products/BA100820.jpg", "old_price": 2560, "price": 1690, "size": "40×60 սմ", "sold": 199, "best": False, "desc": "Էսթետիկ թիթեռ-ծաղիկ կոմպոզիցիա"},
+}
+
+# Օգտակար՝ ըստ կատեգորիայի վերցնել կոդերը
+def product_codes_by_category(cat_key):
+    return [code for code, p in PRODUCTS.items() if p["category"] == cat_key]
+
+# Փոխարինի՛ր քո հին home_accessories handler-ը սրանով
+# ---------------------------
 @bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
 def home_accessories(m: types.Message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("⬅️ Վերադառնալ խանութ")
-    bot.send_message(m.chat.id, "🏠 Այստեղ կլինեն Կենցաղային պարագաները։", reply_markup=markup)
+    codes = product_codes_by_category("home")
+    # Inline keyboard՝ ամեն ապրանք առանձին կոճակ
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for code in codes:
+        title = PRODUCTS[code]["title"]
+        kb.add(types.InlineKeyboardButton(text=title, callback_data=f"p:{code}"))
+    # հետ կոճակ
+    kb.add(
+        types.InlineKeyboardButton("⬅️ Վերադառնալ խանութ", callback_data="back:shop"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="back:home"),
+    )
+
+    bot.send_message(
+        m.chat.id,
+        "🏠 Կենցաղային պարագաներ — ընտրեք գորգը 👇",
+        reply_markup=kb
+    )
+
+
+# ---------------------------
+# 🖼 Ապրանքի էջ — նկար + նկարագրություն
+# ---------------------------
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("p:"))
+def show_product(c: types.CallbackQuery):
+    code = c.data.split(":", 1)[1]
+    p = PRODUCTS.get(code)
+    if not p:
+        bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
+        return
+
+    # Caption՝ հին/նոր գներով և sold count-ով
+    discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
+    best_tag = "🔥 Լավագույն վաճառվող\n" if p.get("best") else ""
+    caption = (
+        f"{best_tag}🌸 **{p['title']}**\n"
+        f"✔️ Չափս՝ {p['size']}\n"
+        f"✔️ {p['desc']}\n\n"
+        f"Հին գին — {p['old_price']}֏ (−{discount}%)\n"
+        f"Նոր գին — {p['price']}֏\n"
+        f"Վաճառված — {p['sold']} հատ"
+    )
+
+    # Իրականացնենք կոճակներ՝ «Վերադառնալ»
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="back:home"),
+    )
+    # (հետագայում այստեղ կավելացնենք «➕ Ավելացնել զամբյուղ» կոճակը)
+
+    try:
+        with open(p["img"], "rb") as photo:
+            bot.send_photo(
+                c.message.chat.id,
+                photo,
+                caption=caption,
+                reply_markup=kb,
+                parse_mode="Markdown"
+            )
+    except Exception:
+        # Եթե նկարը չի գտնվել, ուղարկենք առանց լուսանկարի
+        bot.send_message(c.message.chat.id, caption, reply_markup=kb, parse_mode="Markdown")
+
+    bot.answer_callback_query(c.id)
+
+
+# ---------------------------
+# 🔙 Back callback-ները
+# ---------------------------
+@bot.callback_query_handler(func=lambda c: c.data in ("back:shop", "back:home", "back:home_list"))
+def back_callbacks(c: types.CallbackQuery):
+    if c.data == "back:shop":
+        # վերադարձ խանութ
+        shop_menu(c.message)
+    elif c.data == "back:home":
+        # վերադարձ գլխավոր մենյու (օգտագործիր քո go_home-ը)
+        try:
+            go_home(c.message)
+        except Exception:
+            # fallback՝ միայն Խանութ կոճակով
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.add("🛍 Խանութ")
+            bot.send_message(c.message.chat.id, "🏠 Գլխավոր մենյու", reply_markup=markup)
+    elif c.data == "back:home_list":
+        # վերադարձ Կենցաղային բաժնի ցուցակ
+        home_accessories(c.message)
+    bot.answer_callback_query(c.id)
 
 
 # 🍳 Խոհանոցային տեխնիկա
