@@ -1638,39 +1638,68 @@ def choose_paymethod(c: types.CallbackQuery):
         f"Գրեք ուղարկած **գումարը**՝ թվերով (֏):"
     )
 set_state(m.chat.id, "WAIT_AMOUNT")
+# ====== Checkout: գումար -> чек ======
+
 @bot.message_handler(func=lambda m: get_state(m.chat.id) == "WAIT_AMOUNT")
 def _pay_amount(m: types.Message):
     txt = m.text.strip()
-    if not is_amount(txt):
-        bot.send_message(m.chat.id, "Թույլատրելի է միայն թիվ (օր. 1300). Փորձիր նորից:")
+
+    # միայն թվեր ենք ընդունում
+    if not txt.isdigit():
+        bot.send_message(m.chat.id, "❌ Միայն թիվ գրիր (օր. 1300). Փորձիր նորից:")
         return
-    amount = txt.replace(",", ".")
-    # ... այստեղ կարող ես պահել amount-ը քո order/session-ում ...
-    set_state(m.chat.id, "WAIT_CHECK")   # հաջորդ քայլ՝ чек-ի սպասում
-    bot.send_message(m.chat.id, "Ուղարկիր վճարման чек-ը որպես ՆԿԱՐ կամ ՓԱՍՏԱԹՈՒՂԹ 📎")
+
+    amount = int(txt)
+    uid = m.from_user.id
+
+    # պահում ենք session/order-ում
+    order = CHECKOUT_STATE.get(uid, {})
+    order["amount"] = amount
+    CHECKOUT_STATE[uid] = order
+
+    set_state(m.chat.id, "WAIT_CHECK")
+    bot.send_message(
+        m.chat.id,
+        f"✅ Գումարը ընդունվեց ({amount}֏).\n"
+        "Հիմա ուղարկիր վճարման чек-ը որպես ՆԿԱՐ կամ ՓԱՍՏԱԹՈՒՂԹ 📎։"
+    )
+
+
 @bot.message_handler(
     func=lambda m: get_state(m.chat.id) == "WAIT_CHECK",
     content_types=["photo", "document"]
 )
 def _pay_receipt(m: types.Message):
-    set_state(m.chat.id, None)  # մաքրում ենք վիճակը
-    bot.send_message(
-        m.chat.id,
-        "📩 Շնորհակալություն։ Ձեր պատվերի տվյալները և հասցեն ավտոմատ փոխանցվել են ադմինին հաստատման։"
-    )
-order = CHECKOUT_STATE.get(m.from_user.id, {})
-amount = order.get("amount")
-address = order.get("address")  # <- եթե արդեն պահում ես checkout-ում
-if amount and address:
-    bot.send_message(
-        m.chat.id,
-        f"🏠 Հասցե՝ {address}\n💵 Գումար՝ {amount}֏\n\n"
-        "Պատվերը հաստատված է, ապրանքը ուղարկվելու է 📦։"
-    )
-   
-    # Ադմինին ուղարկում ենք նամակ
-    ADMIN_ID = 6822052289  # քո admin ID
-    bot.forward_message(ADMIN_ID, m.chat.id, m.message_id)
+    uid = m.from_user.id
+    order = CHECKOUT_STATE.get(uid, {})
+
+    amount = order.get("amount")
+    address = order.get("address")  # եթե հասցեն պահում ես նախորդ քայլում
+
+    # մաքրում ենք state-ը
+    set_state(m.chat.id, None)
+
+    # տեղեկացնում ենք օգտվողին
+    if amount and address:
+        bot.send_message(
+            m.chat.id,
+            f"📩 Շնորհակալություն!\n"
+            f"🏠 Հասցե՝ {address}\n"
+            f"💵 Գումար՝ {amount}֏\n\n"
+            "Պատվերը փոխանցվեց ադմինին հաստատման ✅"
+        )
+    else:
+        bot.send_message(
+            m.chat.id,
+            "📩 Շնորհակալություն։ Ձեր чек-ը փոխանցվեց ադմինին հաստատման ✅"
+        )
+
+    # ԱԴՄԻՆԻՆ՝ ֆորվարդ
+    ADMIN_ID = 6829632289  # ← փոխիր քո admin ID-ով, եթե պետք է
+    try:
+        bot.forward_message(ADMIN_ID, m.chat.id, m.message_id)
+    except Exception:
+        pass
 
 @bot.message_handler(func=lambda m: CHECKOUT_STATE.get(m.from_user.id, {}).get("step") == "payamount")
 def pay_amount(m: types.Message):
