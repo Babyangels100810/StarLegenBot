@@ -118,7 +118,15 @@ BTN_INVITE = "👥 Հրավիրել ընկերների"
 BTN_BACK = "⬅️ Վերադառնալ"
 
 # ------------------- RUNTIME (in-memory) -------------------
-USER_STATE = {}          # user_id -> state
+USER_STATE = {}   
+def set_state(cid, s): USER_STATE[cid] = s
+def get_state(cid): return USER_STATE.get(cid)
+def clear_state(cid): USER_STATE.pop(cid, None)
+
+import re
+NUMBER_RE = re.compile(r"^\d+([.,]\d{1,2})?$")
+def is_amount(text: str) -> bool:
+    return bool(NUMBER_RE.match(text.strip()))
 USER_FORM = {}           # user_id -> dict (session)
 USER_LAST_ACTION = {}    # user_id -> {key: timestamp}  (rate-limit)
 
@@ -1629,6 +1637,40 @@ def choose_paymethod(c: types.CallbackQuery):
         f"✅ Կարող եք ուղարկել ավելին (օր. 1300֏): տարբերությունը կդառնա Wallet՝ ադմինի հաստատումից հետո։\n\n"
         f"Գրեք ուղարկած **գումարը**՝ թվերով (֏):"
     )
+set_state(m.chat.id, "WAIT_AMOUNT")
+@bot.message_handler(func=lambda m: get_state(m.chat.id) == "WAIT_AMOUNT")
+def _pay_amount(m: types.Message):
+    txt = m.text.strip()
+    if not is_amount(txt):
+        bot.send_message(m.chat.id, "Թույլատրելի է միայն թիվ (օր. 1300). Փորձիր նորից:")
+        return
+    amount = txt.replace(",", ".")
+    # ... այստեղ կարող ես պահել amount-ը քո order/session-ում ...
+    set_state(m.chat.id, "WAIT_CHECK")   # հաջորդ քայլ՝ чек-ի սպասում
+    bot.send_message(m.chat.id, "Ուղարկիր վճարման чек-ը որպես ՆԿԱՐ կամ ՓԱՍՏԱԹՈՒՂԹ 📎")
+@bot.message_handler(
+    func=lambda m: get_state(m.chat.id) == "WAIT_CHECK",
+    content_types=["photo", "document"]
+)
+def _pay_receipt(m: types.Message):
+    set_state(m.chat.id, None)  # մաքրում ենք վիճակը
+    bot.send_message(
+        m.chat.id,
+        "📩 Շնորհակալություն։ Ձեր պատվերի տվյալները և հասցեն ավտոմատ փոխանցվել են ադմինին հաստատման։"
+    )
+order = CHECKOUT_STATE.get(m.from_user.id, {})
+amount = order.get("amount")
+address = order.get("address")  # <- եթե արդեն պահում ես checkout-ում
+if amount and address:
+    bot.send_message(
+        m.chat.id,
+        f"🏠 Հասցե՝ {address}\n💵 Գումար՝ {amount}֏\n\n"
+        "Պատվերը հաստատված է, ապրանքը ուղարկվելու է 📦։"
+    )
+   
+    # Ադմինին ուղարկում ենք նամակ
+    ADMIN_ID = 6822052289  # քո admin ID
+    bot.forward_message(ADMIN_ID, m.chat.id, m.message_id)
 
 @bot.message_handler(func=lambda m: CHECKOUT_STATE.get(m.from_user.id, {}).get("step") == "payamount")
 def pay_amount(m: types.Message):
