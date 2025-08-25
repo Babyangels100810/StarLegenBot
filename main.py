@@ -1123,8 +1123,7 @@ PRODUCTS = {
 def product_codes_by_category(cat_key):
     return [code for code, p in PRODUCTS.items() if p["category"] == cat_key]
 
-# ---------------------------
-
+# ─── 🏠 Կենցաղային պարագաներ — քարտիկներ նկարի՛նով ─────────────────────────────
 @bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
 def home_accessories(m: types.Message):
     codes = product_codes_by_category("home")
@@ -1153,12 +1152,15 @@ def home_accessories(m: types.Message):
     back.add("⬅️ Վերադառնալ խանութ", "⬅️ Վերադառնալ գլխավոր մենյու")
     bot.send_message(m.chat.id, "📎 Վերևում տեսեք բոլոր քարտիկները։", reply_markup=back)
 
-# 🖼 Ապրանքի էջ — նկար + նկարագրություն
-# ---------------------------
+# ─── 🖼 Ապրանքի էջ — media group + երկար copy ──────────────────────────────────
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("p:"))
 def show_product(c: types.CallbackQuery):
     code = c.data.split(":", 1)[1]
     p = PRODUCTS.get(code)
+    if not p:
+        bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
+        return
+
     discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
     bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
     caption = (
@@ -1171,6 +1173,7 @@ def show_product(c: types.CallbackQuery):
         f"Վաճառված — {p['sold']} հատ\n"
         f"Կոդ՝ `{code}`"
     )
+
     imgs = p.get("images") or [p.get("img")]
     media = []
     for i, path in enumerate(imgs[:10]):
@@ -1179,12 +1182,13 @@ def show_product(c: types.CallbackQuery):
         except Exception:
             continue
         media.append(InputMediaPhoto(f, caption=caption, parse_mode="Markdown") if i == 0 else InputMediaPhoto(f))
+
     if media:
         bot.send_media_group(c.message.chat.id, media)
     else:
         bot.send_message(c.message.chat.id, caption, parse_mode="Markdown")
 
-       # ներքևի inline կոճակները (ԱՊԱՐԱՆՔԻ ԷՋՈՒՄ)
+    # ↓↓↓ ԱՅՍՏԵՂ են inline կոճակները ապրանքի էջում ↓↓↓
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
@@ -1193,34 +1197,22 @@ def show_product(c: types.CallbackQuery):
     bot.send_message(c.message.chat.id, "Ընտրեք գործողություն 👇", reply_markup=kb)
     bot.answer_callback_query(c.id)
 
-# ---------------------------
-# 🔙 Back callback-ները
-# ---------------------------
-@bot.callback_query_handler(func=lambda c: c.data in ("back:shop", "back:home", "back:home_list"))
+# ─── 🔙 Back callback-ներ (ընդլայնված՝ go_home-ով) ─────────────────────────────
+@bot.callback_query_handler(func=lambda c: c.data in ("back:shop", "back:home", "back:home_list", "go_home"))
 def back_callbacks(c: types.CallbackQuery):
     if c.data == "back:shop":
-        # վերադարձ խանութ
         shop_menu(c.message)
-    elif c.data == "back:home":
-        # վերադարձ գլխավոր մենյու (օգտագործիր քո go_home-ը)
-        try:
-            go_home(c.message)
-        except Exception:
-            # fallback՝ միայն Խանութ կոճակով
-            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.add("🛍 Խանութ")
-            bot.send_message(c.message.chat.id, "🏠 Գլխավոր մենյու", reply_markup=markup)
+    elif c.data in ("back:home", "go_home"):
+        go_home(c.message)
     elif c.data == "back:home_list":
-        # վերադարձ Կենցաղային բաժնի ցուցակ
         home_accessories(c.message)
     bot.answer_callback_query(c.id)
 
-
-# 🍳 Խոհանոցային տեխնիկա
+# ─── 🍳 Խոհանոցային տեխնիկա (skeleton՝ թող այսպես) ────────────────────────────
 @bot.message_handler(func=lambda m: m.text == "🍳 Խոհանոցային տեխնիկա")
 def kitchen_tools(m: types.Message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("⬅️ Վերադառնալ խանութ")
+    markup.add("⬅️ Վերադառնալ խանութ", "⬅️ Վերադառնալ գլխավոր մենյու")
     bot.send_message(m.chat.id, "🍳 Այստեղ կլինեն Խոհանոցային տեխնիկայի ապրանքները։", reply_markup=markup)
 
 
