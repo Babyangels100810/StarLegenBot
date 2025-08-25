@@ -1250,6 +1250,7 @@ def home_accessories(m: types.Message):
     bot.send_message(m.chat.id, "📎 Վերևում տեսեք բոլոր քարտիկները։", reply_markup=back)
 
 # ─── 🖼 Ապրանքի էջ — media group + երկար copy ──────────────────────────────────
+
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("p:"))
 def show_product(c: types.CallbackQuery):
     code = c.data.split(":", 1)[1]
@@ -1258,6 +1259,7 @@ def show_product(c: types.CallbackQuery):
         bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
         return
 
+    # --- Caption (մեծ նկարագրությունը) ---
     discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
     bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
     caption = (
@@ -1271,21 +1273,29 @@ def show_product(c: types.CallbackQuery):
         f"Կոդ՝ `{code}`"
     )
 
-    imgs = p.get("images") or [p.get("img")]
+    # --- ՍԼԱՅԴ / ԱԼԲՈՄ ուղարկում (ՓՈԽԱՐԻՆԻՐ ՔՈ ՀԻՆ ՄԱՍԸ ՍՐԱՈՎ) ---
+    raw_imgs = p.get("images") or [p.get("img")]
+    imgs = [path for path in raw_imgs if path and os.path.exists(path)]  # միայն իրականում գոյություն ունեցողները
     media = []
     for i, path in enumerate(imgs[:10]):
         try:
-            f = open(path, "rb")
+            fh = open(path, "rb")
+            if i == 0:
+                media.append(InputMediaPhoto(fh, caption=caption, parse_mode="Markdown"))
+            else:
+                media.append(InputMediaPhoto(fh))
         except Exception:
             continue
-        media.append(InputMediaPhoto(f, caption=caption, parse_mode="Markdown") if i == 0 else InputMediaPhoto(f))
 
-    if media:
+    if len(media) >= 2:
         bot.send_media_group(c.message.chat.id, media)
+    elif len(media) == 1:
+        bot.send_photo(c.message.chat.id, media[0].media, caption=caption, parse_mode="Markdown")
     else:
         bot.send_message(c.message.chat.id, caption, parse_mode="Markdown")
+    # --- վերջ ---
 
-    # ↓↓↓ ԱՅՍՏԵՂ են inline կոճակները ապրանքի էջում ↓↓↓
+    # --- ներքևի inline կոճակները ---
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
