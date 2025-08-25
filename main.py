@@ -942,53 +942,6 @@ def home_accessories(m: types.Message):
 
 
 # 🖼 Ապրանքի էջ — multi-slide + երկար copy
-@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("p:"))
-def show_product(c: types.CallbackQuery):
-    code = c.data.split(":", 1)[1]
-    p = PRODUCTS.get(code)
-    if not p:
-        bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
-        return
-
-    discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
-    bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
-
-    caption = (
-        f"🌸 **{p['title']}**\n"
-        f"✔️ Չափս՝ {p['size']}\n"
-        f"{bullets}\n\n"
-        f"{p.get('long_desc','')}\n\n"
-        f"Հին գին — {p['old_price']}֏ (−{discount}%)\n"
-        f"Նոր գին — **{p['price']}֏**\n"
-        f"Վաճառված — {p['sold']} հատ\n"
-        f"Կոդ՝ `{code}`"
-    )
-
-    # media group (մինչև 10 նկար)
-    imgs = (p.get("images") or [p.get("img")])[:10]
-    media = []
-    for i, path in enumerate(imgs):
-        try:
-            f = open(path, "rb")
-        except Exception:
-            continue
-        if i == 0:
-            media.append(InputMediaPhoto(f, caption=caption, parse_mode="Markdown"))
-        else:
-            media.append(InputMediaPhoto(f))
-    if media:
-        bot.send_media_group(c.message.chat.id, media)
-    else:
-        bot.send_message(c.message.chat.id, caption, parse_mode="Markdown")
-
-    # ներքևի inline կոճակները (ՏԵՍ ԵՍ՝ callback_data=go_home)
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
-    )
-    bot.send_message(c.message.chat.id, "Ընտրեք գործողություն 👇", reply_markup=kb)
-    bot.answer_callback_query(c.id)
 
 
 # 🔙 Back callback-ներ (միայն ՄԵԿ հատ թող)
@@ -1001,7 +954,6 @@ def back_callbacks(c: types.CallbackQuery):
     elif c.data == "back:home_list":
         home_accessories(c.message)      # Կենցաղային ցուցակ
     bot.answer_callback_query(c.id)
-
 
 # ⌚ Սմարթ ժամացույցներ
 @bot.message_handler(func=lambda m: m.text == "⌚ Սմարթ ժամացույցներ")
@@ -1259,7 +1211,7 @@ def show_product(c: types.CallbackQuery):
         bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
         return
 
-    # --- Caption (մեծ նկարագրությունը) ---
+    # Caption
     discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
     bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
     caption = (
@@ -1273,38 +1225,90 @@ def show_product(c: types.CallbackQuery):
         f"Կոդ՝ `{code}`"
     )
 
-    # --- ՍԼԱՅԴ / ԱԼԲՈՄ ուղարկում (ՓՈԽԱՐԻՆԻՐ ՔՈ ՀԻՆ ՄԱՍԸ ՍՐԱՈՎ) ---
-    raw_imgs = p.get("images") or [p.get("img")]
-    imgs = [path for path in raw_imgs if path and os.path.exists(path)]  # միայն իրականում գոյություն ունեցողները
-    media = []
-    for i, path in enumerate(imgs[:10]):
-        try:
-            fh = open(path, "rb")
-            if i == 0:
-                media.append(InputMediaPhoto(fh, caption=caption, parse_mode="Markdown"))
-            else:
-                media.append(InputMediaPhoto(fh))
-        except Exception:
-            continue
-
-    if len(media) >= 2:
-        bot.send_media_group(c.message.chat.id, media)
-    elif len(media) == 1:
-        bot.send_photo(c.message.chat.id, media[0].media, caption=caption, parse_mode="Markdown")
-    else:
+    imgs = _product_images(code)
+    if not imgs:
         bot.send_message(c.message.chat.id, caption, parse_mode="Markdown")
-    # --- վերջ ---
+        kb = _slider_kb(code, 0, 1)
+        bot.send_message(c.message.chat.id, "Ընտրեք գործողություն 👇", reply_markup=kb)
+        bot.answer_callback_query(c.id)
+        return
 
-    # --- ներքևի inline կոճակները ---
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
-    )
-    bot.send_message(c.message.chat.id, "Ընտրեք գործողություն 👇", reply_markup=kb)
+    # Սկսում ենք 0-րդ նկարից
+    with open(imgs[0], "rb") as ph:
+        bot.send_photo(
+            c.message.chat.id, ph, caption=caption,
+            parse_mode="Markdown", reply_markup=_slider_kb(code, 0, len(imgs))
+        )
     bot.answer_callback_query(c.id)
 
-# ─── 🔙 Back callback-ներ (ընդլայնված՝ go_home-ով) ─────────────────────────────
+
+def _product_images(code):
+    p = PRODUCTS.get(code, {})
+    raw = p.get("images") or [p.get("img")]
+    return [x for x in raw if x and os.path.exists(x)]
+
+def _slider_kb(code: str, idx: int, total: int):
+    left = types.InlineKeyboardButton("◀️", callback_data=f"slider:{code}:{(idx-1)%total}")
+    right = types.InlineKeyboardButton("▶️", callback_data=f"slider:{code}:{(idx+1)%total}")
+    row1 = [left, right]
+    row2 = [
+        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+    ]
+    kb = types.InlineKeyboardMarkup()
+    kb.row(*row1)
+    kb.row(*row2)
+    return kb
+
+# ─── 🔙 Back callback-ներ (ընդլայնված՝ go_home-ով) ──
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("slider:"))
+def product_slider(c: types.CallbackQuery):
+    _, code, idx_str = c.data.split(":")
+    idx = int(idx_str)
+
+    p = PRODUCTS.get(code, {})
+    discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
+    bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
+    caption = (
+        f"🌸 **{p.get('title','')}**\n"
+        f"✔️ Չափս՝ {p.get('size','')} \n"
+        f"{bullets}\n\n"
+        f"{p.get('long_desc','')}\n\n"
+        f"Հին գին — {p.get('old_price',0)}֏ (−{discount}%)\n"
+        f"Նոր գին — **{p.get('price',0)}֏**\n"
+        f"Վաճառված — {p.get('sold',0)} հատ\n"
+        f"Կոդ՝ `{code}`"
+    )
+
+    imgs = _product_images(code)
+    total = max(1, len(imgs))
+    idx = idx % total
+
+    if imgs:
+        with open(imgs[idx], "rb") as ph:
+            media = InputMediaPhoto(ph, caption=caption, parse_mode="Markdown")
+            try:
+                bot.edit_message_media(
+                    media=media,
+                    chat_id=c.message.chat.id,
+                    message_id=c.message.message_id,
+                    reply_markup=_slider_kb(code, idx, total)
+                )
+            except Exception:
+                # եթե edit չի ստացվում (օր.՝ caption սահմափակում), ուղարկում ենք նոր
+                bot.send_photo(
+                    c.message.chat.id, ph, caption=caption, parse_mode="Markdown",
+                    reply_markup=_slider_kb(code, idx, total)
+                )
+    else:
+        bot.edit_message_caption(
+            chat_id=c.message.chat.id,
+            message_id=c.message.message_id,
+            caption=caption, parse_mode="Markdown",
+            reply_markup=_slider_kb(code, idx, total)
+        )
+    bot.answer_callback_query(c.id)
+
 @bot.callback_query_handler(func=lambda c: c.data in ("back:shop", "back:home", "back:home_list", "go_home"))
 def back_callbacks(c: types.CallbackQuery):
     if c.data == "back:shop":
