@@ -1184,10 +1184,11 @@ def show_product(c: types.CallbackQuery):
     else:
         bot.send_message(c.message.chat.id, caption, parse_mode="Markdown")
 
+       # ներքևի inline կոճակները (ԱՊԱՐԱՆՔԻ ԷՋՈՒՄ)
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="back:home"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
     )
     bot.send_message(c.message.chat.id, "Ընտրեք գործողություն 👇", reply_markup=kb)
     bot.answer_callback_query(c.id)
