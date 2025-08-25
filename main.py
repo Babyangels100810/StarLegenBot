@@ -50,16 +50,16 @@ BOT_TOKEN = ENV_TOKEN or (SETTINGS.get("bot_token") or "")
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env or settings.json")
 
-bot = TeleBot(BOT_TOKEN, parse_mode=None)
+bot = TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# debug info՝ bot ստեղծելուց ՀԵՏՈ
+# debug info (ըստ ցանկության)
 try:
     me = bot.get_me()
-    print("BOT_TOKEN read:", (BOT_TOKEN[:6] + "..." + BOT_TOKEN[-6:]) if BOT_TOKEN else "EMPTY")
     print("Connected as:", me.username, me.id)
 except Exception as e:
     print("TOKEN FAIL:", e)
     raise
+
 
 
 bot = TeleBot(BOT_TOKEN)
