@@ -875,14 +875,103 @@ def cmd_reload(m: types.Message):
     reload_all()
     bot.send_message(m.chat.id, "♻️ Settings/Data reloaded.")
 
-# ------------------- Other menu handlers (placeholders) -------------------
-@bot.message_handler(func=lambda m: m.text in [
-    BTN_SHOP, BTN_CART, BTN_ORDERS, BTN_COUPONS,
-    BTN_SEARCH, BTN_PROFILE, BTN_BEST, BTN_EXCHANGE,
-    BTN_FEEDBACK, BTN_BONUS
-])
-def placeholders(m: types.Message):
-    bot.send_message(m.chat.id, "Այս բաժինը կհասանելի լինի հաջորդ օրերին 🛠️", reply_markup=build_main_menu())
+# 🛍 Խանութ գլխավոր մենյու
+@bot.message_handler(func=lambda m: m.text == "🛍 Խանութ")
+def shop_menu(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⌚ Սմարթ ժամացույցներ", "💻 Համակարգչային աքսեսուարներ")
+    markup.add("🚗 Ավտոմեքենայի պարագաներ", "🏠 Կենցաղային պարագաներ")
+    markup.add("🍳 Խոհանոցային տեխնիկա", "💅 Խնամքի պարագաներ")
+    markup.add("🚬 Էլեկտրոնային ծխախոտ", "👩 Կանացի (շուտով)")
+    markup.add("👨 Տղամարդու (շուտով)", "🧒 Մանկական (շուտով)")
+    markup.add("⬅️ Վերադառնալ գլխավոր մենյու")
+    bot.send_message(m.chat.id, "🛍 Խանութ — ընտրեք կատեգորիա 👇", reply_markup=markup)
+
+
+# ⌚ Սմարթ ժամացույցներ
+@bot.message_handler(func=lambda m: m.text == "⌚ Սմարթ ժամացույցներ")
+def smart_watches(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "⌚ Այստեղ կլինեն Սմարթ ժամացույցների ապրանքները։", reply_markup=markup)
+
+
+# 💻 Համակարգչային աքսեսուարներ
+@bot.message_handler(func=lambda m: m.text == "💻 Համակարգչային աքսեսուարներ")
+def pc_accessories(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "💻 Այստեղ կլինեն Համակարգչային աքսեսուարների ապրանքները։", reply_markup=markup)
+
+
+# 🚗 Ավտոմեքենայի պարագաներ
+@bot.message_handler(func=lambda m: m.text == "🚗 Ավտոմեքենայի պարագաներ")
+def car_accessories(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "🚗 Այստեղ կլինեն Ավտոմեքենայի պարագաները։", reply_markup=markup)
+
+
+# 🏠 Կենցաղային պարագաներ
+@bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
+def home_accessories(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "🏠 Այստեղ կլինեն Կենցաղային պարագաները։", reply_markup=markup)
+
+
+# 🍳 Խոհանոցային տեխնիկա
+@bot.message_handler(func=lambda m: m.text == "🍳 Խոհանոցային տեխնիկա")
+def kitchen_tools(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "🍳 Այստեղ կլինեն Խոհանոցային տեխնիկայի ապրանքները։", reply_markup=markup)
+
+
+# 💅 Խնամքի պարագաներ
+@bot.message_handler(func=lambda m: m.text == "💅 Խնամքի պարագաներ")
+def care_products(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "💅 Այստեղ կլինեն Խնամքի պարագաները։", reply_markup=markup)
+
+
+# 🚬 Էլեկտրոնային ծխախոտ
+@bot.message_handler(func=lambda m: m.text == "🚬 Էլեկտրոնային ծխախոտ")
+def e_cigs(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "🚬 Այստեղ կլինեն Էլեկտրոնային ծխախոտի ապրանքները։", reply_markup=markup)
+
+
+# 👩 Կանացի (շուտով)
+@bot.message_handler(func=lambda m: m.text == "👩 Կանացի (շուտով)")
+def women_soon(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "👩 Կանացի ապրանքները հասանելի կլինեն շուտով։", reply_markup=markup)
+
+
+# 👨 Տղամարդու (շուտով)
+@bot.message_handler(func=lambda m: m.text == "👨 Տղամարդու (շուտով)")
+def men_soon(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "👨 Տղամարդու ապրանքները հասանելի կլինեն շուտով։", reply_markup=markup)
+
+
+# 🧒 Մանկական (շուտով)
+@bot.message_handler(func=lambda m: m.text == "🧒 Մանկական (շուտով)")
+def kids_soon(m: types.Message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("⬅️ Վերադառնալ խանութ")
+    bot.send_message(m.chat.id, "🧒 Մանկական ապրանքները հասանելի կլինեն շուտով։", reply_markup=markup)
+
+
+# 🔙 Վերադառնալ խանութ
+@bot.message_handler(func=lambda m: m.text == "⬅️ Վերադառնալ խանութ")
+def back_to_shop(m: types.Message):
+    shop_menu(m)  # կանչում ենք վերևի ֆունկցիան
 
 # ------------------- RUN -------------------
 if __name__ == "__main__":
