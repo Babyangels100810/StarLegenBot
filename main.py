@@ -30,16 +30,12 @@ ADMIN_ID = 6822052289
 RL_THOUGHT_SUBMIT_SEC = 180
 RL_AD_SUBMIT_SEC = 300
 
-# (մնացած կոնստանտներդ՝ STATES, BUTTONS, …)
-
 # ------------------- HELPERS: FILE IO -------------------
 def ensure_dirs():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(MEDIA_DIR, exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "exchange"), exist_ok=True)
     os.makedirs(os.path.join(MEDIA_DIR, "products"), exist_ok=True)
-
-# load_json, save_json, reload_all, persist_all ... (ինչպես ունես)
 
 # ------------------- BOT INIT -------------------
 ensure_dirs()
