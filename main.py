@@ -3,7 +3,7 @@ from datetime import datetime
 from telebot import TeleBot, types
 from dotenv import load_dotenv
 from telebot import apihelper
-
+from telebot.types import InputMediaPhoto
 # դեպի Telegram API ճիշտ URL
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
 
@@ -887,6 +887,24 @@ def shop_menu(m: types.Message):
     markup.add("⬅️ Վերադառնալ գլխավոր մենյու")
     bot.send_message(m.chat.id, "🛍 Խանութ — ընտրեք կատեգորիա 👇", reply_markup=markup)
 
+# 🏠 Գլխավոր մենյու (միայն ՄԵԿ հատ թող)
+@bot.message_handler(func=lambda m: m.text == "⬅️ Վերադառնալ գլխավոր մենյու")
+def go_home(m: types.Message):
+    main = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    main.add("🛍 Խանութ")   # մնացած կոճակները հետո կավելացնես
+    bot.send_message(m.chat.id, "🏠 Գլխավոր մենյու", reply_markup=main)
+
+
+# 🔙 Back callback-ներ (միայն ՄԵԿ հատ թող)
+@bot.callback_query_handler(func=lambda c: c.data in ("back:shop", "back:home", "back:home_list"))
+def back_callbacks(c: types.CallbackQuery):
+    if c.data == "back:shop":
+        shop_menu(c.message)          # Խանութ
+    elif c.data == "back:home":
+        go_home(c.message)            # Գլխավոր մենյու
+    elif c.data == "back:home_list":
+        home_accessories(c.message)   # Կենցաղային ցուցակ
+    bot.answer_callback_query(c.id)
 
 # ⌚ Սմարթ ժամացույցներ
 @bot.message_handler(func=lambda m: m.text == "⌚ Սմարթ ժամացույցներ")
@@ -1106,73 +1124,73 @@ def product_codes_by_category(cat_key):
     return [code for code, p in PRODUCTS.items() if p["category"] == cat_key]
 
 # ---------------------------
+
 @bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
 def home_accessories(m: types.Message):
     codes = product_codes_by_category("home")
-    # Inline keyboard՝ ամեն ապրանք առանձին կոճակ
-    kb = types.InlineKeyboardMarkup(row_width=2)
     for code in codes:
-        title = PRODUCTS[code]["title"]
-        kb.add(types.InlineKeyboardButton(text=title, callback_data=f"p:{code}"))
-    # հետ կոճակ
-    kb.add(
-        types.InlineKeyboardButton("⬅️ Վերադառնալ խանութ", callback_data="back:shop"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="back:home"),
-    )
+        p = PRODUCTS[code]
+        main_img = (p.get("images") or [p.get("img")])[0]
+        discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
+        best = "🔥 Լավագույն վաճառվող\n" if p.get("best") else ""
+        caption = (
+            f"{best}**{p['title']}**\n"
+            f"Չափս՝ {p['size']}\n"
+            f"Հին գին — {p['old_price']}֏ (−{discount}%)\n"
+            f"Նոր գին — **{p['price']}֏**\n"
+            f"Կոդ՝ `{code}`"
+        )
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("👀 Դիտել ամբողջությամբ", callback_data=f"p:{code}"))
+        try:
+            with open(main_img, "rb") as ph:
+                bot.send_photo(m.chat.id, ph, caption=caption, reply_markup=kb, parse_mode="Markdown")
+        except Exception:
+            bot.send_message(m.chat.id, caption, reply_markup=kb, parse_mode="Markdown")
+        time.sleep(0.2)
 
-    bot.send_message(
-        m.chat.id,
-        "🏠 Կենցաղային պարագաներ — ընտրեք գորգը 👇",
-        reply_markup=kb
-    )
+    back = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    back.add("⬅️ Վերադառնալ խանութ", "⬅️ Վերադառնալ գլխավոր մենյու")
+    bot.send_message(m.chat.id, "📎 Վերևում տեսեք բոլոր քարտիկները։", reply_markup=back)
 
-
-# ---------------------------
 # 🖼 Ապրանքի էջ — նկար + նկարագրություն
 # ---------------------------
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("p:"))
 def show_product(c: types.CallbackQuery):
     code = c.data.split(":", 1)[1]
     p = PRODUCTS.get(code)
-    if not p:
-        bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
-        return
-
-    # Caption՝ հին/նոր գներով և sold count-ով
     discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
-    best_tag = "🔥 Լավագույն վաճառվող\n" if p.get("best") else ""
+    bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
     caption = (
-        f"{best_tag}🌸 **{p['title']}**\n"
+        f"🌸 **{p['title']}**\n"
         f"✔️ Չափս՝ {p['size']}\n"
-        f"✔️ {p['desc']}\n\n"
+        f"{bullets}\n\n"
+        f"{p.get('long_desc','')}\n\n"
         f"Հին գին — {p['old_price']}֏ (−{discount}%)\n"
-        f"Նոր գին — {p['price']}֏\n"
-        f"Վաճառված — {p['sold']} հատ"
+        f"Նոր գին — **{p['price']}֏**\n"
+        f"Վաճառված — {p['sold']} հատ\n"
+        f"Կոդ՝ `{code}`"
     )
+    imgs = p.get("images") or [p.get("img")]
+    media = []
+    for i, path in enumerate(imgs[:10]):
+        try:
+            f = open(path, "rb")
+        except Exception:
+            continue
+        media.append(InputMediaPhoto(f, caption=caption, parse_mode="Markdown") if i == 0 else InputMediaPhoto(f))
+    if media:
+        bot.send_media_group(c.message.chat.id, media)
+    else:
+        bot.send_message(c.message.chat.id, caption, parse_mode="Markdown")
 
-    # Իրականացնենք կոճակներ՝ «Վերադառնալ»
     kb = types.InlineKeyboardMarkup()
     kb.add(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
         types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="back:home"),
     )
-    # (հետագայում այստեղ կավելացնենք «➕ Ավելացնել զամբյուղ» կոճակը)
-
-    try:
-        with open(p["img"], "rb") as photo:
-            bot.send_photo(
-                c.message.chat.id,
-                photo,
-                caption=caption,
-                reply_markup=kb,
-                parse_mode="Markdown"
-            )
-    except Exception:
-        # Եթե նկարը չի գտնվել, ուղարկենք առանց լուսանկարի
-        bot.send_message(c.message.chat.id, caption, reply_markup=kb, parse_mode="Markdown")
-
+    bot.send_message(c.message.chat.id, "Ընտրեք գործողություն 👇", reply_markup=kb)
     bot.answer_callback_query(c.id)
-
 
 # ---------------------------
 # 🔙 Back callback-ները
