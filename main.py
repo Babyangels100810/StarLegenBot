@@ -1633,7 +1633,7 @@ def choose_paymethod(c: types.CallbackQuery):
         f"✅ Կարող եք ուղարկել ավելին (օր. 1300֏): տարբերությունը կդառնա Wallet՝ ադմինի հաստատումից հետո։\n\n"
         f"Գրեք ուղարկած **գումարը**՝ թվերով (֏):"
     )
-set_state(m.chat.id, "WAIT_AMOUNT")
+set_state(c.message.chat.id, "WAIT_AMOUNT")
 # ====== Checkout: գումար -> чек ======
 
 @bot.message_handler(func=lambda m: get_state(m.chat.id) == "WAIT_AMOUNT")
@@ -1653,7 +1653,7 @@ def _pay_amount(m: types.Message):
     order["amount"] = amount
     CHECKOUT_STATE[uid] = order
 
-    set_state(m.chat.id, "WAIT_CHECK")
+    set_state(c.message.chat.id, "WAIT_AMOUNT")
     bot.send_message(
         m.chat.id,
         f"✅ Գումարը ընդունվեց ({amount}֏).\n"
