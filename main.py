@@ -53,7 +53,7 @@ bot = TeleBot(BOT_TOKEN, parse_mode="Markdown")
 # ՏԵՂԱՓՈԽԵԼ՝ ADMIN_ID-ն քո իրական Telegram ID-ով
 # ============================================================================
 # --- ԿԱՐԵՎՈՐ ԿԱՐԳԱՎՈՐՄԱՆԸ ---
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6822052898"))  # ← փոխիր, եթե պետք է
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6822052289"))  # ← փոխիր, եթե պետք է
 
 # --- Ֆայլային պահեստ ---
 DATA_DIR = "admin_data"
