@@ -1691,7 +1691,7 @@ def _pay_receipt(m: types.Message):
         )
 
     # ԱԴՄԻՆԻՆ՝ ֆորվարդ
-    ADMIN_ID = 6829632289  # ← փոխիր քո admin ID-ով, եթե պետք է
+    ADMIN_ID = 6822052289  # ← փոխիր քո admin ID-ով, եթե պետք է
     try:
         bot.forward_message(ADMIN_ID, m.chat.id, m.message_id)
     except Exception:
