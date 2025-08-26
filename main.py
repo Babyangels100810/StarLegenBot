@@ -695,6 +695,9 @@ def start_handler(m: types.Message):
         bot.send_message(m.chat.id, welcome_text(customer_no), reply_markup=markup, parse_mode="HTML")
     except Exception:
         bot.send_message(m.chat.id, "Բարի գալուստ!", reply_markup=markup)
+@bot.message_handler(commands=['menu'])
+def menu_cmd(m: types.Message):
+    return go_home(m)
 
 # ------------------- Invite / share bot -------------------
 @bot.message_handler(func=lambda msg: msg.text == BTN_INVITE)
@@ -2157,51 +2160,53 @@ def choose_paymethod(c: types.CallbackQuery):
     if not s:
         bot.answer_callback_query(c.id, "Ժամկետը անցել է, սկսեք նորից")
         return
+
     s["order"]["payment"]["method"] = method
     s["step"] = "payamount"
 
     # ՊՐՈՎԱՅԴԵՐՆԵՐԻ ՄԱՆՐԱՄԱՍՆԵՐԸ — ՓՈԽԻՐ ՔՈ ՌԵՔՎԻԶԻՏՆԵՐՈՎ
     details = {
-        "CARD":     "💳 Քարտ՝ 5355 **** **** 1234\nՍտացող՝ Your Name",
-        "TELCELL":  "🏧 TelCell՝ Account: 123456",
-        "IDRAM":    "📱 Idram ID: 123456789",
-        "FASTSHIFT":"💠 Fastshift Wallet: fast_shift_acc",
+        "CARD":      "💳 Քարտ՝ 5355 **** **** 1234\nՍտացող՝ Your Name",
+        "TELCELL":   "🏧 TelCell՝ Account: 123456",
+        "IDRAM":     "📱 Idram ID: 123456789",
+        "FASTSHIFT": "💠 Fastshift Wallet: fast_shift_acc",
     }.get(method, "Մանրամասները ճշտեք ադմինից")
 
     total = s["order"]["total"]
+
     bot.answer_callback_query(c.id)
     bot.send_message(
         c.message.chat.id,
         f"{details}\n\nՍտանդարտ գումարը՝ **{total}֏**\n"
         f"✅ Կարող եք ուղարկել ավելին (օր. 1300֏): տարբերությունը կդառնա Wallet՝ ադմինի հաստատումից հետո։\n\n"
-        f"Գրեք ուղարկած **գումարը**՝ թվերով (֏):"
+        f"Գրեք ուղարկած **գումարը**՝ թվերով (֏):",
+        parse_mode="Markdown"
     )
-set_state(c.message.chat.id, "WAIT_AMOUNT")
-# ====== Checkout: գումար -> чек ======
+
+    # ⬇️ ԱՅՍՏԵՂ ԷՐ ԲԱՑ ԹՈՂՆՎԵԼ
+    set_state(c.message.chat.id, "WAIT_AMOUNT")
 
 @bot.message_handler(func=lambda m: get_state(m.chat.id) == "WAIT_AMOUNT")
-def _pay_amount(m: types.Message):
-    txt = m.text.strip()
+def pay_amount(m: types.Message):
+    txt = (m.text or "").strip()
+    try:
+        amount = int(txt)
+    except ValueError:
+        return bot.reply_to(m, "Մուտքագրիր գումարը թվերով, օրինակ՝ 1200")
 
-    # միայն թվեր ենք ընդունում
-    if not txt.isdigit():
-        bot.send_message(m.chat.id, "❌ Միայն թիվ գրիր (օր. 1300). Փորձիր նորից:")
-        return
-
-    amount = int(txt)
     uid = m.from_user.id
+    s = CHECKOUT_STATE.get(uid)
+    if not s:
+        clear_state(m.chat.id)
+        return bot.reply_to(m, "Սեսիան ավարտված է, սկսիր նորից։")
 
-    # պահում ենք session/order-ում
-    order = CHECKOUT_STATE.get(uid, {})
-    order["amount"] = amount
-    CHECKOUT_STATE[uid] = order
+    s["order"]["payment"]["amount"] = amount
+    set_state(m.chat.id, "WAIT_PROOF")
 
-    set_state(c.message.chat.id, "WAIT_AMOUNT")
-    bot.send_message(
-        m.chat.id,
-        f"✅ Գումարը ընդունվեց ({amount}֏).\n"
-        "Հիմա ուղարկիր վճարման чек-ը որպես ՆԿԱՐ կամ ՓԱՍՏԱԹՈՒՂԹ 📎։"
-    )
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("📎 Կցել փոխանցման чек-ը", callback_data="pay_attach"))
+    bot.send_message(m.chat.id, "Շնորհակալություն ✅ Այժմ կցիր փոխանցման чек-ը (նկար):", reply_markup=kb)
+
 
 
 @bot.message_handler(
