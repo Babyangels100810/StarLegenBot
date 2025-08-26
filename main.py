@@ -6,7 +6,6 @@ from telebot import apihelper
 from telebot.types import InputMediaPhoto
 from collections import defaultdict
 import os, json, time, threading, traceback, datetime
-from telebot import types
 # դեպի Telegram API ճիշտ URL
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
 
