@@ -5,7 +5,8 @@ from dotenv import load_dotenv, find_dotenv
 from telebot import apihelper
 from telebot.types import InputMediaPhoto
 from collections import defaultdict
-
+import os, json, time, threading, traceback, datetime
+from telebot import types
 # դեպի Telegram API ճիշտ URL
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
 
@@ -45,19 +46,360 @@ BOT_TOKEN = ENV_TOKEN or (SETTINGS.get("bot_token") or "")
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env or settings.json")
 
+
 bot = TeleBot(BOT_TOKEN, parse_mode="Markdown")
+# === ADMIN PANEL + HEALTH-CHECK (drop-in block) ==============================
+# ՊԱՏՍՏԱՑՐԵԼ՝ տեղադրել bot = telebot.TeleBot(TOKEN) տողի ՀԵՏՈ մեկ անգամ
+# ՏԵՂԱՓՈԽԵԼ՝ ADMIN_ID-ն քո իրական Telegram ID-ով
+# ============================================================================
+# --- ԿԱՐԵՎՈՐ ԿԱՐԳԱՎՈՐՄԱՆԸ ---
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6822052898"))  # ← փոխիր, եթե պետք է
 
-# debug info (ըստ ցանկության)
+# --- Ֆայլային պահեստ ---
+DATA_DIR = "admin_data"
+os.makedirs(DATA_DIR, exist_ok=True)
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+MSG_LOG   = os.path.join(DATA_DIR, "messages.log")
+ERR_LOG   = os.path.join(DATA_DIR, "errors.log")
+
+def _load_users():
+    try:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_users(data):
+    try:
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        _log_error(e)
+
+def _log_message(line: str):
+    try:
+        with open(MSG_LOG, "a", encoding="utf-8") as f:
+            f.write(line.rstrip() + "\n")
+    except Exception as e:
+        _log_error(e)
+
+def _log_error(e):
+    try:
+        with open(ERR_LOG, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.utcnow().isoformat()}Z] {repr(e)}\n")
+            f.write(traceback.format_exc() + "\n")
+    except:
+        pass
+
+# --- UPTIME / HEALTH ---
+START_TS = time.time()
+LAST_ERROR_TEXT = "չկա"
+
+def _set_last_error_text(text: str):
+    global LAST_ERROR_TEXT
+    LAST_ERROR_TEXT = text
+
+# --- Թեթև keep-alive թել (ոչինչ չի անում, պարզապես պահում ենք կենդանի վիճակը) ---
+def _keepalive_thread():
+    while True:
+        time.sleep(60)  # ամեն 60վ մի փոքր շնչում է
+t = threading.Thread(target=_keepalive_thread, daemon=True)
+t.start()
+
+# --- Քո բոտի բոլոր update-ները "լսելու" hook (չի խանգարում հենդլերներին) ---
+def _update_listener(updates):
+    # updates-ը list է՝ message/update օբյեկտներով
+    for u in updates:
+        try:
+            if getattr(u, "content_type", None):  # message
+                _capture_user_and_log(u)
+        except Exception as e:
+            _set_last_error_text(str(e))
+            _log_error(e)
+
+# Կցում ենք listener-ը (ՉԻ ՓՈԽՈՒՄ քո գործող հենդլերները)
 try:
-    me = bot.get_me()
-    print("Connected as:", me.username, me.id)
+    bot.set_update_listener(_update_listener)
 except Exception as e:
-    print("TOKEN FAIL:", e)
-    raise
+    _set_last_error_text("set_update_listener failed")
+    _log_error(e)
 
+# --- Օգտատերերի և հաղորդագրությունների ավտոմատ գրանցում ---
+def _capture_user_and_log(m):
+    # user bookkeeping
+    users = _load_users()
+    u = m.from_user
+    uid = str(u.id)
+    users.setdefault(uid, {
+        "id": u.id,
+        "first_name": u.first_name or "",
+        "last_name": u.last_name or "",
+        "username": u.username or "",
+        "lang": u.language_code or "",
+        "joined_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "messages": 0,
+        "last_seen": "",
+        "blocked": False
+    })
+    users[uid]["messages"] += 1
+    users[uid]["last_seen"] = datetime.datetime.utcnow().isoformat() + "Z"
+    # keep latest username/name
+    users[uid]["first_name"] = u.first_name or users[uid]["first_name"]
+    users[uid]["last_name"]  = u.last_name or users[uid]["last_name"]
+    users[uid]["username"]   = u.username or users[uid]["username"]
+    _save_users(users)
 
+    # message log
+    try:
+        chat_type = getattr(m.chat, "type", "")
+        text = getattr(m, "text", None)
+        caption = getattr(m, "caption", None)
+        content = text if text is not None else (caption if caption is not None else m.content_type)
+        _log_message(f"[{datetime.datetime.utcnow().isoformat()}Z] "
+                     f"uid={u.id} (@{u.username}) chat={chat_type} -> {content}")
+    except Exception as e:
+        _set_last_error_text(str(e))
+        _log_error(e)
 
-bot = TeleBot(BOT_TOKEN)
+# --- ՕԳՏԱԿԱՐ ՖՈՐՄԱՏՆԵՐ ---
+def fmt_user(u):
+    tag = f"@{u.get('username')}" if u.get("username") else f"id={u.get('id')}"
+    name = (u.get("first_name") or "") + (" " + u.get("last_name") if u.get("last_name") else "")
+    return f"{tag} — {name.strip()}"
+
+def _human_uptime():
+    sec = int(time.time() - START_TS)
+    d, sec = divmod(sec, 86400)
+    h, sec = divmod(sec, 3600)
+    m, s  = divmod(sec, 60)
+    parts = []
+    if d: parts.append(f"{d} օր")
+    if h: parts.append(f"{h} ժ")
+    if m: parts.append(f"{m} ր")
+    parts.append(f"{s} վ")
+    return " ".join(parts)
+
+# --- Ադմին ստուգում ---
+def _is_admin(uid: int) -> bool:
+    return int(uid) == int(ADMIN_ID)
+
+# --- ԱԴՄԻՆ ՄԵՆՅՈՒ / ԿՈՃԱԿՆԵՐ ---
+def admin_keyboard():
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("🧾 Վերջին հաղորդագրություններ", callback_data="adm_last_msgs"),
+        types.InlineKeyboardButton("👥 Վերջին օգտատերեր", callback_data="adm_last_users"),
+    )
+    kb.add(
+        types.InlineKeyboardButton("📣 Broadcast (բոլորին)", callback_data="adm_broadcast"),
+        types.InlineKeyboardButton("🔎 Փնտրել օգտատիրոջը", callback_data="adm_search"),
+    )
+    kb.add(
+        types.InlineKeyboardButton("⬇️ Ներբեռնել logs", callback_data="adm_download_logs"),
+        types.InlineKeyboardButton("📊 Վիճակագրություն / Ping", callback_data="adm_stats"),
+    )
+    kb.add(
+        types.InlineKeyboardButton("↩️ Փակել", callback_data="adm_close"),
+    )
+    return kb
+
+# --- /admin հրաման ---
+@bot.message_handler(commands=["admin"])
+def open_admin(message):
+    if not _is_admin(message.from_user.id):
+        return bot.reply_to(message, "❌ Դուք ադմին չեք։")
+    text = (
+        "🛠 **Ադմին պանել**\n"
+        "Այստեղից կարող ես տեսնել վիճակագրություն, վերջին հաղորդագրությունները, օգտատերերին, "
+        "ուղարկել broadcast, փնտրել օգտատիրոջը, ներբեռնել լոգերը և ստուգել uptime-ը։"
+    )
+    bot.send_message(message.chat.id, text, reply_markup=admin_keyboard(), parse_mode="Markdown")
+
+# --- Վիճակագրություն / Ping ---
+@bot.callback_query_handler(func=lambda c: c.data == "adm_stats")
+def adm_stats(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    users = _load_users()
+    total_users = len(users)
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    txt = (
+        f"📊 **Վիճակագրություն**\n"
+        f"- Օգտատերեր՝ {total_users}\n"
+        f"- Uptime՝ { _human_uptime() }\n"
+        f"- Վերջին սխալ՝ {LAST_ERROR_TEXT}\n"
+        f"- Ժամը (UTC)՝ {now}\n"
+        f"\n✅ Եթե uptime-ը աճում է, բոտը աշխատում է 24/7։"
+    )
+    bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, parse_mode="Markdown",
+                          reply_markup=admin_keyboard())
+
+# --- Վերջին օգտատերեր ---
+@bot.callback_query_handler(func=lambda c: c.data == "adm_last_users")
+def adm_last_users(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    users = list(_load_users().values())
+    users.sort(key=lambda x: x.get("last_seen",""), reverse=True)
+    chunk = users[:20]
+    if not chunk:
+        text = "Օգտատերեր դեռ չկան։"
+    else:
+        lines = [f"👥 **Վերջին 20 օգտատերեր**"]
+        for u in chunk:
+            lines.append("• " + fmt_user(u) + f" | last_seen: {u.get('last_seen','')}")
+        text = "\n".join(lines)
+    bot.edit_message_text(text, c.message.chat.id, c.message.message_id, parse_mode="Markdown",
+                          reply_markup=admin_keyboard())
+
+# --- Վերջին հաղորդագրություններ (քաշում ենք log-ից) ---
+@bot.callback_query_handler(func=lambda c: c.data == "adm_last_msgs")
+def adm_last_msgs(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    try:
+        if not os.path.exists(MSG_LOG):
+            text = "Լոգ ֆայլը դեռ չկա։"
+        else:
+            with open(MSG_LOG, "r", encoding="utf-8") as f:
+                lines = f.readlines()[-50:]  # վերջին 50 տողը
+            text = "🧾 **Վերջին հաղորդագրություններ (50 տող)**\n" + "".join(["• " + l for l in lines])
+            # երկար կարող է լինել, Telegram-ի սահմանները հաշվել
+            if len(text) > 3800:
+                text = text[-3800:]
+        bot.edit_message_text(text, c.message.chat.id, c.message.message_id,
+                              reply_markup=admin_keyboard(), parse_mode=None)
+    except Exception as e:
+        _set_last_error_text(str(e))
+        _log_error(e)
+        bot.answer_callback_query(c.id, "Չստացվեց կարդալ լոգը")
+
+# --- Logs download (որպես ֆայլ) ---
+@bot.callback_query_handler(func=lambda c: c.data == "adm_download_logs")
+def adm_download_logs(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    sent_something = False
+    try:
+        if os.path.exists(MSG_LOG):
+            with open(MSG_LOG, "rb") as f:
+                bot.send_document(c.message.chat.id, f, caption="messages.log")
+                sent_something = True
+        if os.path.exists(ERR_LOG):
+            with open(ERR_LOG, "rb") as f:
+                bot.send_document(c.message.chat.id, f, caption="errors.log")
+                sent_something = True
+        if not sent_something:
+            bot.answer_callback_query(c.id, "Լոգեր չկան դեռ")
+    except Exception as e:
+        _set_last_error_text(str(e))
+        _log_error(e)
+        bot.answer_callback_query(c.id, "Սխալ՝ logs ուղարկելիս")
+
+# --- Broadcast բոլոր օգտատերերին ---
+BROADCAST_STATE = {}  # {admin_id: True/False}
+@bot.callback_query_handler(func=lambda c: c.data == "adm_broadcast")
+def adm_broadcast(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    BROADCAST_STATE[c.from_user.id] = True
+    bot.answer_callback_query(c.id)
+    bot.send_message(c.message.chat.id,
+                     "✍️ Ուղարկիր հաղորդագրություն՝ broadcast անել բոլոր օգտատերերին։\n"
+                     "Չեղարկելու համար գրիր `/cancel`.")
+
+@bot.message_handler(commands=["cancel"])
+def adm_broadcast_cancel(m):
+    if not _is_admin(m.from_user.id):
+        return
+    if BROADCAST_STATE.get(m.from_user.id):
+        BROADCAST_STATE[m.from_user.id] = False
+        bot.reply_to(m, "❌ Չեղարկվեց broadcast-ը։")
+
+@bot.message_handler(func=lambda m: BROADCAST_STATE.get(m.from_user.id, False))
+def adm_broadcast_do(m):
+    if not _is_admin(m.from_user.id):
+        return
+    text_or_caption = m.text or m.caption or ""
+    users = list(_load_users().values())
+    ok = fail = 0
+    for u in users:
+        try:
+            bot.copy_message(u["id"], m.chat.id, m.message_id)
+            ok += 1
+            time.sleep(0.03)  # մի փոքր սահունություն
+        except Exception as e:
+            fail += 1
+    BROADCAST_STATE[m.from_user.id] = False
+    bot.reply_to(m, f"📣 Ավարտված է. ✅ {ok} | ❌ {fail}")
+
+# --- Ուզեր որոնում ---
+SEARCH_STATE = {}
+@bot.callback_query_handler(func=lambda c: c.data == "adm_search")
+def adm_search(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    SEARCH_STATE[c.from_user.id] = True
+    bot.answer_callback_query(c.id)
+    bot.send_message(c.message.chat.id,
+                     "Ներմուծիր user ID կամ @username՝ տվյալ օգտատիրոջ քարտը տեսնելու համար.\n"
+                     "Օր.` 123456789 կամ @nickname")
+
+@bot.message_handler(func=lambda m: SEARCH_STATE.get(m.from_user.id, False))
+def do_search_user(m):
+    if not _is_admin(m.from_user.id):
+        return
+    query = (m.text or "").strip()
+    SEARCH_STATE[m.from_user.id] = False
+    users = _load_users()
+    found = None
+    if query.startswith("@"):
+        uname = query[1:].lower()
+        for u in users.values():
+            if (u.get("username") or "").lower() == uname:
+                found = u; break
+    else:
+        if query.isdigit() and query in users:
+            found = users[query]
+    if not found:
+        return bot.reply_to(m, "Չգտա այդ օգտատիրոջը։")
+    text = (
+        "🪪 **Օգտատիրոջ քարտ**\n" +
+        fmt_user(found) + "\n" +
+        f"ID: `{found.get('id')}`\n"
+        f"Լեզու: {found.get('lang')}\n"
+        f"Գրանցված: {found.get('joined_at')}\n"
+        f"Վերջ. ակտիվություն: {found.get('last_seen')}\n"
+        f"Հաղորդագրություններ: {found.get('messages')}\n"
+    )
+    bot.reply_to(m, text, parse_mode="Markdown")
+
+# --- Փակել ադմին մենյուն ---
+@bot.callback_query_handler(func=lambda c: c.data == "adm_close")
+def adm_close(c):
+    if not _is_admin(c.from_user.id):
+        return bot.answer_callback_query(c.id, "Ադմին չէս")
+    try:
+        bot.delete_message(c.message.chat.id, c.message.message_id)
+    except Exception:
+        pass
+
+# --- Ընդհանուր error-wrapper օրինակ՝ եթե ուզում ես օգտագործել քո կոդում ---
+def safe_send(chat_id, *args, **kwargs):
+    try:
+        return bot.send_message(chat_id, *args, **kwargs)
+    except Exception as e:
+        _set_last_error_text(str(e))
+        _log_error(e)
+
+# --- /ping արագ health-check (կարող ես գործարկել ցանկացած պահին) ---
+@bot.message_handler(commands=["ping"])
+def cmd_ping(m):
+    if not _is_admin(m.from_user.id):
+        return bot.reply_to(m, "Pong 🟢")
+    bot.reply_to(m, f"🟢 Pong\nUptime: {_human_uptime()}\nLast error: {LAST_ERROR_TEXT}")
+# =============================================================================
+
 
 # ------------------- CONFIG / CONSTANTS -------------------
 DATA_DIR = "data"
