@@ -440,20 +440,19 @@ STATE_AD_CTA_URL = "AD_CTA_URL"
 STATE_AD_CONFIRM = "AD_CONFIRM"
 
 # --- MENU LABELS ---
-BTN_SHOP = "🛍 Խանութ"
-BTN_CART = "🛒 Զամբյուղ"
-BTN_ORDERS = "📦 Իմ պատվերները"
-BTN_COUPONS = "🎁 Կուպոններ"
-BTN_SEARCH = "🔍 Որոնել ապրանք"
-BTN_GOOD_THOUGHTS = "🧠 Լավ մտքեր"
-BTN_PROFILE = "🧍 Իմ էջը"
-BTN_BEST = "🏆 Լավագույններ"
-BTN_EXCHANGE = "💱 Փոխարկումներ"
-BTN_FEEDBACK = "💬 Հետադարձ կապ"
-BTN_BONUS = "🎡 Բոնուս անիվ"
-BTN_ADS = "📣 Գովազդներ"
-BTN_INVITE = "👥 Հրավիրել ընկերների"
-BTN_BACK = "⬅️ Վերադառնալ"
+BTN_SHOP        = "🛍 Խանութ"
+BTN_CART        = "🛒 Զամբյուղ"
+BTN_ORDERS      = "📦 Իմ պատվերները"
+BTN_SEARCH      = "🔍 Ապրանքների որոնում"
+BTN_PROFILE     = "🧍 Իմ էջը"
+BTN_EXCHANGE    = "💱 Փոխանակումներ"
+BTN_FEEDBACK    = "💬 Կապ մեզ հետ"
+BTN_INVITE      = "👥 Հրավիրել ընկերների"
+
+# Նոր բաժիններ
+BTN_PARTNERS    = "📢 Բիզնես գործընկերներ"
+BTN_THOUGHTS    = "💡 Խոհուն մտքեր"
+BTN_RATES       = "📈 Օրվա կուրսեր"
 
 # ------------------- RUNTIME (in-memory) -------------------
 USER_STATE = {}   
@@ -1261,16 +1260,218 @@ def shop_menu(m: types.Message):
 
 # 🏠 Գլխավոր մենյու (միայն ՄԵԿ հատ թող)
 # 🏠 Գլխավոր մենյու (բոլոր 13 կոճակներով)
-@bot.message_handler(func=lambda m: m.text == "⬅️ Վերադառնալ գլխավոր մենյու")
+@bot.message_handler(func=lambda m: m.text in ["/start", "/menu"])  # ունես եթե առանձին /start էլ
 def go_home(m: types.Message):
     main = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    main.add("🛍 Խանութ", "🛒 Զամբյուղ")
-    main.add("📦 Իմ պատվերները", "🎁 Կուպոններ")
-    main.add("🔍 Որոնել ապրանք", "🎡 Բոնուս անիվ")
-    main.add("🧍 Իմ էջը", "🏆 Լավագույններ")
-    main.add("💱 Փոխարկումներ", "💬 Կապ մեզ հետ")
-    main.add("Հրավիրել ընկերների")  # վերջինը առանձին տողում
-    bot.send_message(m.chat.id, "🏠 Գլխավոր մենյու", reply_markup=main)
+    main.add(BTN_SHOP, BTN_CART)
+    main.add(BTN_ORDERS, BTN_SEARCH)
+    main.add(BTN_PROFILE, BTN_EXCHANGE)
+    main.add(BTN_FEEDBACK, BTN_THOUGHTS)
+    main.add(BTN_PARTNERS)
+    main.add(BTN_RATES)
+    main.add(BTN_INVITE)
+    bot.send_message(m.chat.id, "Գլխավոր մենյու ✨", reply_markup=main)
+# ========== DAILY RATES (auto-refresh) ==========
+
+DATA_DIR = "admin_data"
+os.makedirs(DATA_DIR, exist_ok=True)
+RATES_FILE = os.path.join(DATA_DIR, "rates.json")
+
+RATES_CACHE = {"rates": {}, "updated_at": None, "error": None}
+
+def _rates_save():
+    try:
+        with open(RATES_FILE, "w", encoding="utf-8") as f:
+            json.dump(RATES_CACHE, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+def _rates_load():
+    global RATES_CACHE
+    try:
+        with open(RATES_FILE, "r", encoding="utf-8") as f:
+            RATES_CACHE = json.load(f)
+    except:
+        pass
+
+def fetch_rates():
+    try:
+        url = "https://api.exchangerate.host/latest"
+        symbols = ["USD", "EUR", "RUB", "GBP", "CNY"]
+        r = requests.get(url, params={"base": "AMD", "symbols": ",".join(symbols)}, timeout=10)
+        data = r.json()
+        raw = data.get("rates", {}) if data else {}
+        converted = {}
+        for k, v in raw.items():
+            if v:
+                converted[k] = round(1.0 / v, 4)  # 1 <FX> = ? AMD
+        RATES_CACHE["rates"] = converted
+        RATES_CACHE["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+        RATES_CACHE["error"] = None
+        _rates_save()
+    except Exception as e:
+        RATES_CACHE["error"] = str(e)
+
+def _rates_loop():
+    while True:
+        fetch_rates()
+        time.sleep(600)  # 10 րոպե
+
+threading.Thread(target=_rates_loop, daemon=True).start()
+fetch_rates()
+
+@bot.message_handler(func=lambda m: m.text == BTN_RATES)
+def on_rates(m: types.Message):
+    _rates_load()
+    err = RATES_CACHE.get("error")
+    rates = RATES_CACHE.get("rates", {})
+    if err or not rates:
+        bot.send_message(m.chat.id, "❗️Քաշումը ձախողվեց, փորձիր քիչ հետո։")
+        return
+    flags = {"USD":"🇺🇸","EUR":"🇪🇺","RUB":"🇷🇺","GBP":"🇬🇧","CNY":"🇨🇳"}
+    order = ["USD","EUR","RUB","GBP","CNY"]
+    lines = ["📈 **Օրվա կուրսեր** (AMD)", ""]
+    for c in order:
+        if c in rates:
+            lines.append(f"{flags.get(c,'')} 1 {c} = **{rates[c]} AMD**")
+    lines.append("")
+    lines.append(f"🕒 Թարմացվել է (UTC): {RATES_CACHE.get('updated_at','-')}")
+    bot.send_message(m.chat.id, "\n".join(lines), parse_mode="Markdown")
+# ===============================================
+THOUGHTS_FILE = os.path.join(DATA_DIR, "thoughts.json")
+
+def _read_json(path, default=None):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return default
+
+def _write_json(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+@bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
+def on_thoughts_menu(m: types.Message):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("➕ Ավելացնել միտք", callback_data="t_add"))
+    kb.add(types.InlineKeyboardButton("📚 Դիտել վերջինները", callback_data="t_list"))
+    bot.send_message(m.chat.id, "«Խոհուն մտքեր» բաժին ✨", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "t_list")
+def t_list(c):
+    arr = _read_json(THOUGHTS_FILE, []) or []
+    if not arr:
+        bot.answer_callback_query(c.id, "Դեռ չկա", show_alert=True)
+        return
+    text = "💡 Վերջին մտքեր\n\n" + "\n\n".join(arr[-5:])
+    bot.send_message(c.message.chat.id, text)
+
+PENDING_THOUGHT = {}
+
+@bot.callback_query_handler(func=lambda c: c.data == "t_add")
+def t_add(c):
+    PENDING_THOUGHT[c.from_user.id] = True
+    bot.send_message(c.message.chat.id, "Ուղարկիր քո միտքը (տեքստով)։ Ադմինը պետք է հաստատի։")
+
+@bot.message_handler(func=lambda m: PENDING_THOUGHT.get(m.from_user.id, False))
+def t_collect(m: types.Message):
+    PENDING_THOUGHT[m.from_user.id] = False
+    txt = (m.text or "").strip()
+    if not txt:
+        return bot.reply_to(m, "Դատարկ է 🤔")
+    # ուղարկում ենք ադմինին approve-ի համար
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton("✅ Հաստատել", callback_data=f"t_ok::{m.chat.id}"),
+        types.InlineKeyboardButton("❌ Մերժել", callback_data=f"t_no::{m.chat.id}")
+    )
+    bot.send_message(ADMIN_ID, f"Նոր միտք՝\n\n{txt}", reply_markup=kb)
+    bot.reply_to(m, "✅ Ուղարկվեց ադմինին հաստատման։")
+
+THOUGHTS_FILE = os.path.join(DATA_DIR, "thoughts.json")
+
+def _read_json(path, default=None):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return default
+
+def _write_json(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+@bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
+def on_thoughts_menu(m: types.Message):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("➕ Ավելացնել միտք", callback_data="t_add"))
+    kb.add(types.InlineKeyboardButton("📚 Դիտել վերջինները", callback_data="t_list"))
+    bot.send_message(m.chat.id, "«Խոհուն մտքեր» բաժին ✨", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "t_list")
+def t_list(c):
+    arr = _read_json(THOUGHTS_FILE, []) or []
+    if not arr:
+        bot.answer_callback_query(c.id, "Դեռ չկա", show_alert=True)
+        return
+    text = "💡 Վերջին մտքեր\n\n" + "\n\n".join(arr[-5:])
+    bot.send_message(c.message.chat.id, text)
+
+PENDING_THOUGHT = {}
+
+@bot.callback_query_handler(func=lambda c: c.data == "t_add")
+def t_add(c):
+    PENDING_THOUGHT[c.from_user.id] = True
+    bot.send_message(c.message.chat.id, "Ուղարկիր քո միտքը (տեքստով)։ Ադմինը պետք է հաստատի։")
+
+@bot.message_handler(func=lambda m: PENDING_THOUGHT.get(m.from_user.id, False))
+def t_collect(m: types.Message):
+    PENDING_THOUGHT[m.from_user.id] = False
+    txt = (m.text or "").strip()
+    if not txt:
+        return bot.reply_to(m, "Դատարկ է 🤔")
+    # ուղարկում ենք ադմինին approve-ի համար
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton("✅ Հաստատել", callback_data=f"t_ok::{m.chat.id}"),
+        types.InlineKeyboardButton("❌ Մերժել", callback_data=f"t_no::{m.chat.id}")
+    )
+    bot.send_message(ADMIN_ID, f"Նոր միտք՝\n\n{txt}", reply_markup=kb)
+    bot.reply_to(m, "✅ Ուղարկվեց ադմինին հաստատման։")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("t_ok::") or c.data.startswith("t_no::"))
+def t_moderate(c):
+    if c.from_user.id != ADMIN_ID:
+        return bot.answer_callback_query(c.id, "Միայն ադմինին։")
+    action, chat_id = c.data.split("::", 1)
+    chat_id = int(chat_id)
+    msg = c.message.text.replace("Նոր միտք՝\n\n", "")
+    if action == "t_ok":
+        arr = _read_json(THOUGHTS_FILE, []) or []
+        arr.append(msg)
+        _write_json(THOUGHTS_FILE, arr)
+        bot.send_message(chat_id, "✅ Քո միտքը հրապարակվեց, շնորհակալ ենք!")
+    else:
+        bot.send_message(chat_id, "❌ Ադմինը մերժեց այս միտքը։")
+    bot.answer_callback_query(c.id, "Կատարված է")
+PARTNERS_FILE = os.path.join(DATA_DIR, "partners.json")
+
+@bot.message_handler(func=lambda m: m.text == BTN_PARTNERS)
+def on_partners(m: types.Message):
+    arr = _read_json(PARTNERS_FILE, [])
+    if not arr:
+        bot.send_message(m.chat.id, "Այս պահին գործընկերների հայտարարություններ չկան։")
+        return
+    text = "📢 Բիզնես գործընկերներ\n\n" + "\n\n".join(arr[-5:])
+    bot.send_message(m.chat.id, text)
+
 
 # ⌚ Սմարթ ժամացույցներ
 @bot.message_handler(func=lambda m: m.text == "⌚ Սմարթ ժամացույցներ")
