@@ -6,6 +6,9 @@ from telebot import apihelper
 from telebot.types import InputMediaPhoto
 from collections import defaultdict
 import os, json, time, threading, traceback, datetime
+import re
+import requests
+
 # դեպի Telegram API ճիշտ URL
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
 
@@ -438,28 +441,24 @@ STATE_AD_CTA_TEXT = "AD_CTA_TEXT"
 STATE_AD_CTA_URL = "AD_CTA_URL"
 STATE_AD_CONFIRM = "AD_CONFIRM"
 
-# --- MENU LABELS ---
-BTN_SHOP        = "🛍 Խանութ"
-BTN_CART        = "🛒 Զամբյուղ"
-BTN_ORDERS      = "📦 Իմ պատվերները"
-BTN_SEARCH      = "🔍 Ապրանքների որոնում"
-BTN_PROFILE     = "🧍 Իմ էջը"
-BTN_EXCHANGE    = "💱 Փոխանակումներ"
-BTN_FEEDBACK    = "💬 Կապ մեզ հետ"
-BTN_INVITE      = "👥 Հրավիրել ընկերների"
-
-# Նոր բաժիններ
-BTN_PARTNERS    = "📢 Բիզնես գործընկերներ"
-BTN_THOUGHTS    = "💡 Խոհուն մտքեր"
-BTN_RATES       = "📈 Օրվա կուրսեր"
-
+BTN_HOME      = "🏠 Գլխավոր մենյու"
+BTN_SHOP      = "🛍 Խանութ"
+BTN_CART      = "🛒 Զամբյուղ"
+BTN_EXCHANGE  = "💱 Փոխարկումներ"
+BTN_THOUGHTS  = "💡 Խոհուն մտքեր"
+BTN_RATES     = "📈 Օրվա կուրսեր"
+BTN_PROFILE   = "🧍 Իմ էջ"
+BTN_FEEDBACK  = "💬 Հետադարձ կապ"
+BTN_PARTNERS  = "📢 Բիզնես գործընկերներ"
+BTN_SEARCH    = "🔍 Ապրանքի որոնում"
+BTN_INVITE    = "👥 Հրավիրել ընկերների"
 # ------------------- RUNTIME (in-memory) -------------------
 USER_STATE = {}   
 def set_state(cid, s): USER_STATE[cid] = s
 def get_state(cid): return USER_STATE.get(cid)
 def clear_state(cid): USER_STATE.pop(cid, None)
 
-import re
+
 NUMBER_RE = re.compile(r"^\d+([.,]\d{1,2})?$")
 def is_amount(text: str) -> bool:
     return bool(NUMBER_RE.match(text.strip()))
@@ -566,15 +565,17 @@ def rate_limited(user_id: int, key: str, window_sec: int) -> bool:
     return False
 
 def build_main_menu() -> types.ReplyKeyboardMarkup:
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(BTN_SHOP, BTN_CART)
-    markup.add(BTN_ORDERS, BTN_COUPONS)
-    markup.add(BTN_SEARCH, BTN_GOOD_THOUGHTS)
-    markup.add(BTN_PROFILE, BTN_BEST)
-    markup.add(BTN_EXCHANGE, BTN_FEEDBACK)
-    markup.add(BTN_BONUS, BTN_ADS)
-    markup.add(BTN_INVITE)
-    return markup
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(BTN_SHOP, BTN_CART)
+    kb.add(BTN_EXCHANGE, BTN_THOUGHTS)
+    kb.add(BTN_RATES, BTN_PROFILE)
+    kb.add(BTN_FEEDBACK, BTN_PARTNERS)
+    kb.add(BTN_SEARCH, BTN_INVITE)
+    kb.add(BTN_HOME)
+    return kb
+@bot.message_handler(func=lambda m: m.text == BTN_HOME)
+def back_home(m: types.Message):
+    bot.send_message(m.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
 def send_welcome(message: types.Message):
     user_id = message.from_user.id
     global customer_counter
@@ -644,7 +645,6 @@ ensure_dirs()
 reload_all()
 
 BOT_TOKEN = SETTINGS.get("bot_token") or "PASTE_YOUR_BOT_TOKEN_HERE"
-bot = TeleBot(BOT_TOKEN, parse_mode=None)  # we'll set parse_mode per message
 
 # ------------------- /start & welcome -------------------
 @bot.message_handler(commands=['start'])
