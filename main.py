@@ -134,15 +134,15 @@ def bot_link_with_ref(user_id: int) -> str:
     uname = SETTINGS.get("bot_username") or "YourBotUsernameHere"
     return f"https://t.me/{uname}?start={user_id}"
 
-def build_main_menu() -> types.ReplyKeyboardMarkup:
+def send_home_menu(chat_id: int):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(BTN_SHOP, BTN_CART)
-    kb.add(BTN_EXCHANGE, BTN_THOUGHTS)
-    kb.add(BTN_RATES, BTN_PROFILE)
-    kb.add(BTN_FEEDBACK, BTN_PARTNERS)
-    kb.add(BTN_SEARCH, BTN_INVITE)
+    kb.add(BTN_EXCHANGE, BTN_THOUGHTS)   # ← ճիշտ անունը
+    kb.add(BTN_RATES, BTN_PROFILE)       # ← ճիշտ անունը
+    kb.add(BTN_FEEDBACK, BTN_SEARCH)
     kb.add(BTN_HOME)
-    return kb
+    bot.send_message(chat_id, "🏠 Գլխավոր մենյու", reply_markup=kb)
+
 
 def welcome_text(customer_no: int) -> str:
     return (
@@ -406,6 +406,9 @@ def cat_household(m: types.Message):
 # StarLegenBot — main.py
 # PART 2/3  (paste directly below Part 1/3)
 # =========================
+@bot.message_handler(commands=['debug'])
+def cmd_debug(m: types.Message):
+    bot.send_message(m.chat.id, f"Products: {len(PRODUCTS)}\nUsers: {len(USERS)}\nOrders: {len(ORDERS)}")
 
 # ------------------- PRODUCTS -------------------
 PRODUCTS = {
@@ -723,6 +726,29 @@ def product_slider(c: types.CallbackQuery):
 #   (Next: Part 3/3 — Cart handlers, Checkout, Orders, Admin panel)
 # =========================
 # =========================
+# --------- UNIFIED HOME SENDER (put above MAIN LOOP) ----------
+def send_home_menu(chat_id: int):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(BTN_SHOP, BTN_CART)
+    kb.add(BTN_EXCHANGE, BTN_IDEAS)
+    kb.add(BTN_ORDERS, BTN_PROFILE)
+    kb.add(BTN_FEEDBACK, BTN_SEARCH)
+    bot.send_message(chat_id, "🏠 Գլխավոր մենյու", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == BTN_BACK_HOME)
+def back_home_from_text(m: types.Message):
+    send_home_menu(m.chat.id)
+
+@bot.callback_query_handler(func=lambda c: c.data == "go_home")
+def back_home_from_cb(c: types.CallbackQuery):
+    try:
+        # remove inline under previous message to avoid extra clicks
+        bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
+    except:
+        pass
+    send_home_menu(c.message.chat.id)
+    bot.answer_callback_query(c.id, "Գլխավոր մենյու")
+
 # StarLegenBot — main.py
 # PART 3/3  (paste below Part 2/3)
 # =========================
