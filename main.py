@@ -441,17 +441,19 @@ STATE_AD_CTA_TEXT = "AD_CTA_TEXT"
 STATE_AD_CTA_URL = "AD_CTA_URL"
 STATE_AD_CONFIRM = "AD_CONFIRM"
 
-BTN_HOME      = "🏠 Գլխավոր մենյու"
+# --- MENU LABELS (FINAL, as requested) ---
 BTN_SHOP      = "🛍 Խանութ"
 BTN_CART      = "🛒 Զամբյուղ"
 BTN_EXCHANGE  = "💱 Փոխարկումներ"
 BTN_THOUGHTS  = "💡 Խոհուն մտքեր"
 BTN_RATES     = "📈 Օրվա կուրսեր"
-BTN_PROFILE   = "🧍 Իմ էջ"
-BTN_FEEDBACK  = "💬 Հետադարձ կապ"
+BTN_PROFILE   = "🧍 Իմ էջը"
+BTN_FEEDBACK  = "💬 Կապ մեզ հետ"
 BTN_PARTNERS  = "📢 Բիզնես գործընկերներ"
 BTN_SEARCH    = "🔍 Ապրանքի որոնում"
 BTN_INVITE    = "👥 Հրավիրել ընկերների"
+BTN_HOME      = "🏠 Գլխավոր մենյու"
+
 # ------------------- RUNTIME (in-memory) -------------------
 USER_STATE = {}   
 def set_state(cid, s): USER_STATE[cid] = s
@@ -571,8 +573,8 @@ def build_main_menu() -> types.ReplyKeyboardMarkup:
     kb.add(BTN_RATES, BTN_PROFILE)
     kb.add(BTN_FEEDBACK, BTN_PARTNERS)
     kb.add(BTN_SEARCH, BTN_INVITE)
-    kb.add(BTN_HOME)
     return kb
+
 @bot.message_handler(func=lambda m: m.text == BTN_HOME)
 def back_home(m: types.Message):
     bot.send_message(m.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
@@ -1357,6 +1359,10 @@ def _write_json(path, data):
         pass
 
 @bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
+def show_good_thoughts(m: types.Message):
+    text, kb = render_good_thoughts(page=1)
+    bot.send_message(m.chat.id, text, reply_markup=kb, parse_mode="HTML")
+
 def on_thoughts_menu(m: types.Message):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("➕ Ավելացնել միտք", callback_data="t_add"))
@@ -1410,60 +1416,56 @@ def _write_json(path, data):
     except:
         pass
 
-@bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
-def on_thoughts_menu(m: types.Message):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("➕ Ավելացնել միտք", callback_data="t_add"))
-    kb.add(types.InlineKeyboardButton("📚 Դիտել վերջինները", callback_data="t_list"))
-    bot.send_message(m.chat.id, "«Խոհուն մտքեր» բաժին ✨", reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda c: c.data == "t_list")
-def t_list(c):
-    arr = _read_json(THOUGHTS_FILE, []) or []
-    if not arr:
-        bot.answer_callback_query(c.id, "Դեռ չկա", show_alert=True)
-        return
-    text = "💡 Վերջին մտքեր\n\n" + "\n\n".join(arr[-5:])
-    bot.send_message(c.message.chat.id, text)
-
-PENDING_THOUGHT = {}
-
-@bot.callback_query_handler(func=lambda c: c.data == "t_add")
-def t_add(c):
-    PENDING_THOUGHT[c.from_user.id] = True
-    bot.send_message(c.message.chat.id, "Ուղարկիր քո միտքը (տեքստով)։ Ադմինը պետք է հաստատի։")
-
-@bot.message_handler(func=lambda m: PENDING_THOUGHT.get(m.from_user.id, False))
-def t_collect(m: types.Message):
-    PENDING_THOUGHT[m.from_user.id] = False
-    txt = (m.text or "").strip()
-    if not txt:
-        return bot.reply_to(m, "Դատարկ է 🤔")
-    # ուղարկում ենք ադմինին approve-ի համար
-    kb = types.InlineKeyboardMarkup()
-    kb.add(
-        types.InlineKeyboardButton("✅ Հաստատել", callback_data=f"t_ok::{m.chat.id}"),
-        types.InlineKeyboardButton("❌ Մերժել", callback_data=f"t_no::{m.chat.id}")
+# 💬 Կապ մեզ հետ
+@bot.message_handler(func=lambda m: m.text == BTN_FEEDBACK)
+def contact_us(m: types.Message):
+    bot.send_message(
+        m.chat.id,
+        "📞 Կապ մեզ հետ\n"
+        "Telegram support: @StarLegenSupport\n"
+        "☎️ +374 XX XX XX\n"
+        "✉️ Email: support@example.com"
     )
-    bot.send_message(ADMIN_ID, f"Նոր միտք՝\n\n{txt}", reply_markup=kb)
-    bot.reply_to(m, "✅ Ուղարկվեց ադմինին հաստատման։")
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("t_ok::") or c.data.startswith("t_no::"))
-def t_moderate(c):
-    if c.from_user.id != ADMIN_ID:
-        return bot.answer_callback_query(c.id, "Միայն ադմինին։")
-    action, chat_id = c.data.split("::", 1)
-    chat_id = int(chat_id)
-    msg = c.message.text.replace("Նոր միտք՝\n\n", "")
-    if action == "t_ok":
-        arr = _read_json(THOUGHTS_FILE, []) or []
-        arr.append(msg)
-        _write_json(THOUGHTS_FILE, arr)
-        bot.send_message(chat_id, "✅ Քո միտքը հրապարակվեց, շնորհակալ ենք!")
-    else:
-        bot.send_message(chat_id, "❌ Ադմինը մերժեց այս միտքը։")
-    bot.answer_callback_query(c.id, "Կատարված է")
-PARTNERS_FILE = os.path.join(DATA_DIR, "partners.json")
+# 💱 Փոխարկումներ (stub մեթոդների ընտրություն)
+@bot.message_handler(func=lambda m: m.text == BTN_EXCHANGE)
+def exchange_menu(m: types.Message):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("PI ➜ USDT", callback_data="ex:pi"))
+    kb.add(types.InlineKeyboardButton("FTN ➜ AMD", callback_data="ex:ftn"))
+    kb.add(types.InlineKeyboardButton("Alipay լիցքավորում", callback_data="ex:ali"))
+    bot.send_message(m.chat.id, "💱 Ընտրեք փոխարկումը 👇", reply_markup=kb)
+
+# 🔍 Ապրանքի որոնում (պարզ որոնում վերնագրով/կոդով)
+SEARCH_STATE_K = "SEARCH_PRODUCTS"
+
+@bot.message_handler(func=lambda m: m.text == BTN_SEARCH)
+def search_prompt(m: types.Message):
+    USER_STATE[m.from_user.id] = SEARCH_STATE_K
+    bot.send_message(m.chat.id, "Գրեք ապրանքի կոդը կամ անվան մասը (օր. BA1008 կամ «գորգ»):")
+
+@bot.message_handler(func=lambda m: USER_STATE.get(m.from_user.id) == SEARCH_STATE_K)
+def do_search(m: types.Message):
+    q = (m.text or "").strip().lower()
+    USER_STATE.pop(m.from_user.id, None)
+    if not q:
+        return bot.reply_to(m, "Դատարկ հարցում 🤔")
+
+    found = []
+    for code, p in PRODUCTS.items():
+        title = p.get("title","").lower()
+        if q in code.lower() or q in title:
+            found.append((code, p["title"], p["price"]))
+
+    if not found:
+        return bot.send_message(m.chat.id, "Չգտանք նման ապրանք 🙁")
+
+    # ցույց ենք տալիս առաջին 8-ը
+    for code, title, price in found[:8]:
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("👀 Դիտել", callback_data=f"p:{code}"))
+        bot.send_message(m.chat.id, f"• {title} — {price}֏ (կոդ՝ {code})", reply_markup=kb)
 
 @bot.message_handler(func=lambda m: m.text == BTN_PARTNERS)
 def on_partners(m: types.Message):
