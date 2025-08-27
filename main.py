@@ -967,10 +967,6 @@ def render_ads_list(page: int = 1, per_page: int = 5):
     kb.add(types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="ads:home"))
     return text, kb
 
-@bot.message_handler(func=lambda m: m.text == BTN_ADS)
-def show_ads(m: types.Message):
-    text, kb = render_ads_list(page=1)
-    bot.send_message(m.chat.id, text, reply_markup=kb, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("ads:"))
 def on_ads_nav(c: types.CallbackQuery):
