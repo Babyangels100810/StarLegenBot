@@ -1260,8 +1260,11 @@ def shop_menu(m: types.Message):
 
 # 🏠 Գլխավոր մենյու (միայն ՄԵԿ հատ թող)
 # 🏠 Գլխավոր մենյու (բոլոր 13 կոճակներով)
-@bot.message_handler(func=lambda m: m.text in ["/start", "/menu"])  # ունես եթե առանձին /start էլ
-def go_home(m: types.Message):
+# 🏠 Գլխավոր մենյու (/menu հրամանով)
+@bot.message_handler(commands=['menu'])
+def menu_cmd(m: types.Message):
+    bot.send_message(m.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
+
     main = types.ReplyKeyboardMarkup(resize_keyboard=True)
     main.add(BTN_SHOP, BTN_CART)
     main.add(BTN_ORDERS, BTN_SEARCH)
@@ -1980,6 +1983,8 @@ def _slider_kb(code: str, idx: int, total: int):
 def open_cart_from_menu(m: types.Message):
     uid = m.from_user.id
     kb = types.InlineKeyboardMarkup()
+
+    # ցուցադրում ենք մինչև 6 ապրանք՝ քանակ/կառավարման կոճակներով
     for code, qty in list(CART[uid].items())[:6]:
         title = PRODUCTS[code]["title"]
         kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
@@ -1988,13 +1993,11 @@ def open_cart_from_menu(m: types.Message):
             types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
             types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}"),
         )
-    # ... cart-ի տեսք կազմող հատվածում
-        kb.row(
-    types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
-    types.InlineKeyboardButton("✅ Պատվիրել", callback_data="checkout:start"),
-)
 
-    
+    kb.row(
+        types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
+        types.InlineKeyboardButton("✅ Պատվիրել", callback_data="checkout:start"),
+    )
     kb.row(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
         types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
@@ -2002,18 +2005,19 @@ def open_cart_from_menu(m: types.Message):
     bot.send_message(m.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="Markdown")
 
 
-@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("checkout:"))
-def checkout_start(c: types.CallbackQuery):
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cart:"))
+def cart_actions(c: types.CallbackQuery):
     uid = c.from_user.id
-    if not CART[uid]:
-        bot.answer_callback_query(c.id, "Զամբյուղը դատարկ է")
-        return
+    parts = c.data.split(":")
+    action = parts[1]
+    code = parts[2] if len(parts) > 2 else None
 
-    ok, code, st = _check_stock(uid)
-    if not ok:
-        bot.answer_callback_query(c.id, "Պահեստում բավարար քանակ չկա")
-        bot.send_message(c.message.chat.id, f"⚠️ {PRODUCTS[code]['title']} — հասանելի՝ {st} հատ")
-        return
+    if action == "add" and code:
+        new_q = CART[uid].get(code, 0) + 1
+        st = PRODUCTS[code].get("stock")
+        if isinstance(st, int) and new_q > st:
+            bot.answer_callback_query(c.id, "Պահեստում բավարար չկա")
+            return
         CART[uid][code] = new_q
         bot.answer_callback_query(c.id, "Ավելացվեց զամբյուղում ✅")
 
@@ -2024,6 +2028,7 @@ def checkout_start(c: types.CallbackQuery):
             bot.answer_callback_query(c.id, "Վերջասահմանը՝ ըստ պահեստի")
             return
         CART[uid][code] = new_q
+        bot.answer_callback_query(c.id)
 
     elif action == "dec" and code:
         q = CART[uid].get(code, 0)
@@ -2031,17 +2036,19 @@ def checkout_start(c: types.CallbackQuery):
             CART[uid].pop(code, None)
         else:
             CART[uid][code] = q - 1
+        bot.answer_callback_query(c.id)
 
     elif action == "rm" and code:
         CART[uid].pop(code, None)
+        bot.answer_callback_query(c.id)
 
     elif action == "clear":
         CART[uid].clear()
+        bot.answer_callback_query(c.id, "Զամբյուղը մաքրվեց")
 
-    # show cart
+    # ցույց ենք տալիս զամբյուղը (show + ցանկացած փոփոխությունից հետո)
     if action in ("show", "add", "inc", "dec", "rm", "clear"):
         kb = types.InlineKeyboardMarkup()
-        # up to 6 items inline control
         for code, qty in list(CART[uid].items())[:6]:
             title = PRODUCTS[code]["title"]
             kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
@@ -2054,10 +2061,11 @@ def checkout_start(c: types.CallbackQuery):
             types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
             types.InlineKeyboardButton("✅ Պատվիրել", callback_data="checkout:start"),
         )
+        kb.row(
+            types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+            types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+        )
         bot.send_message(c.message.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="Markdown")
-        bot.answer_callback_query(c.id)
-    else:
-        bot.answer_callback_query(c.id)
 
 # ===== CHECKOUT =====
 COUNTRIES = ["Հայաստան"]
@@ -2367,7 +2375,11 @@ def my_page(m: types.Message):
 
 # ------------------- RUN -------------------
 if __name__ == "__main__":
-    print("Bot is running...")
+    try:
+        bot.remove_webhook()
+    except: 
+        pass
+    time.sleep(1)
     bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
 
 
