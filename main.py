@@ -1760,36 +1760,54 @@ def show_product(c: types.CallbackQuery):
     bot.answer_callback_query(c.id)
 
 
+# ---------------- SLIDER + BACK BUTTONS (robust) ----------------
+
 def _product_images(code):
     p = PRODUCTS.get(code, {})
     raw = p.get("images") or [p.get("img")]
     return [x for x in raw if x and os.path.exists(x)]
 
 def _slider_kb(code: str, idx: int, total: int):
-    left = types.InlineKeyboardButton("◀️", callback_data=f"slider:{code}:{(idx-1)%total}")
+    # arrows
+    left  = types.InlineKeyboardButton("◀️", callback_data=f"slider:{code}:{(idx-1)%total}")
     right = types.InlineKeyboardButton("▶️", callback_data=f"slider:{code}:{(idx+1)%total}")
-    row1 = [left, right]
-    row2 = [
+    # cart actions
+    row_cart = [
+        types.InlineKeyboardButton("➕ Ավելացնել զամբյուղ", callback_data=f"cart:add:{code}"),
+        types.InlineKeyboardButton("🧺 Դիտել զամբյուղ", callback_data="cart:show"),
+    ]
+    # back/home
+    row_back = [
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
         types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
     ]
     kb = types.InlineKeyboardMarkup()
-    kb.row(*row1)
-    kb.row(*row2)
+    kb.row(left, right)
+    kb.row(*row_cart)
+    kb.row(*row_back)
     return kb
 
-# ─── 🔙 Back callback-ներ (ընդլայնված՝ go_home-ով) ──
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("slider:"))
 def product_slider(c: types.CallbackQuery):
-    _, code, idx_str = c.data.split(":")
-    idx = int(idx_str)
+    try:
+        _, code, idx_str = c.data.split(":")
+        idx = int(idx_str)
+    except Exception:
+        return bot.answer_callback_query(c.id, "Սխալ սլայդ")
 
     p = PRODUCTS.get(code, {})
+    imgs = _product_images(code)
+    total = len(imgs)
+    if total == 0:
+        return bot.answer_callback_query(c.id, "Նկար չկա")
+
+    idx = idx % total
+
     discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
     bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
     caption = (
         f"🌸 **{p.get('title','')}**\n"
-        f"✔️ Չափս՝ {p.get('size','')} \n"
+        f"✔️ Չափս՝ {p.get('size','')}\n"
         f"{bullets}\n\n"
         f"{p.get('long_desc','')}\n\n"
         f"Հին գին — {p.get('old_price',0)}֏ (−{discount}%)\n"
@@ -1798,44 +1816,38 @@ def product_slider(c: types.CallbackQuery):
         f"Կոդ՝ `{code}`"
     )
 
-    imgs = _product_images(code)
-    total = max(1, len(imgs))
-    idx = idx % total
-
-    if imgs:
+    # Փորձում ենք edit_message_media, եթե չստացվի՝ ուղարկում ենք նոր
+    try:
         with open(imgs[idx], "rb") as ph:
             media = InputMediaPhoto(ph, caption=caption, parse_mode="Markdown")
-            try:
-                bot.edit_message_media(
-                    media=media,
-                    chat_id=c.message.chat.id,
-                    message_id=c.message.message_id,
-                    reply_markup=_slider_kb(code, idx, total)
-                )
-            except Exception:
-                # եթե edit չի ստացվում (օր.՝ caption սահմափակում), ուղարկում ենք նոր
+            bot.edit_message_media(
+                media=media,
+                chat_id=c.message.chat.id,
+                message_id=c.message.message_id,
+                reply_markup=_slider_kb(code, idx, total)
+            )
+    except Exception:
+        try:
+            with open(imgs[idx], "rb") as ph:
                 bot.send_photo(
                     c.message.chat.id, ph, caption=caption, parse_mode="Markdown",
                     reply_markup=_slider_kb(code, idx, total)
                 )
-    else:
-        bot.edit_message_caption(
-            chat_id=c.message.chat.id,
-            message_id=c.message.message_id,
-            caption=caption, parse_mode="Markdown",
-            reply_markup=_slider_kb(code, idx, total)
-        )
+        except Exception:
+            pass
+
     bot.answer_callback_query(c.id)
 
-@bot.callback_query_handler(func=lambda c: c.data in ("back:shop", "back:home", "back:home_list", "go_home"))
-def back_callbacks(c: types.CallbackQuery):
-    if c.data == "back:shop":
-        shop_menu(c.message)
-    elif c.data in ("back:home", "go_home"):
-        go_home(c.message)
-    elif c.data == "back:home_list":
-        home_accessories(c.message)
+# Վերադարձները՝ առանձին հենդլերներով (ավելի կայուն)
+@bot.callback_query_handler(func=lambda c: c.data == "go_home")
+def cb_go_home(c: types.CallbackQuery):
     bot.answer_callback_query(c.id)
+    bot.send_message(c.message.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
+
+@bot.callback_query_handler(func=lambda c: c.data == "back:home_list")
+def cb_home_list(c: types.CallbackQuery):
+    bot.answer_callback_query(c.id)
+    home_accessories(c.message)
 
 # ─── 🍳 Խոհանոցային տեխնիկա (skeleton՝ թող այսպես) ────────────────────────────
 @bot.message_handler(func=lambda m: m.text == "🍳 Խոհանոցային տեխնիկա")
@@ -1976,10 +1988,13 @@ def open_cart_from_menu(m: types.Message):
             types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
             types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}"),
         )
-    kb.row(
-        types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
-        types.InlineKeyboardButton("🧾 Ճանապարհել պատվեր", callback_data="checkout:start"),
-    )
+    # ... cart-ի տեսք կազմող հատվածում
+        kb.row(
+    types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
+    types.InlineKeyboardButton("✅ Պատվիրել", callback_data="checkout:start"),
+)
+
+    
     kb.row(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
         types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
@@ -1987,20 +2002,18 @@ def open_cart_from_menu(m: types.Message):
     bot.send_message(m.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="Markdown")
 
 
-@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cart:"))
-def cart_callbacks(c: types.CallbackQuery):
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("checkout:"))
+def checkout_start(c: types.CallbackQuery):
     uid = c.from_user.id
-    parts = c.data.split(":")
-    action = parts[1]
-    code = parts[2] if len(parts) > 2 else None
+    if not CART[uid]:
+        bot.answer_callback_query(c.id, "Զամբյուղը դատարկ է")
+        return
 
-    if action == "add" and code:
-        # stock guard
-        st = PRODUCTS[code].get("stock")
-        new_q = CART[uid].get(code, 0) + 1
-        if isinstance(st, int) and new_q > st:
-            bot.answer_callback_query(c.id, "Պահեստում բավարար քանակ չկա")
-            return
+    ok, code, st = _check_stock(uid)
+    if not ok:
+        bot.answer_callback_query(c.id, "Պահեստում բավարար քանակ չկա")
+        bot.send_message(c.message.chat.id, f"⚠️ {PRODUCTS[code]['title']} — հասանելի՝ {st} հատ")
+        return
         CART[uid][code] = new_q
         bot.answer_callback_query(c.id, "Ավելացվեց զամբյուղում ✅")
 
@@ -2039,11 +2052,7 @@ def cart_callbacks(c: types.CallbackQuery):
             )
         kb.row(
             types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
-            types.InlineKeyboardButton("🧾 Ճանապարհել պատվեր", callback_data="checkout:start"),
-        )
-        kb.row(
-            types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-            types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+            types.InlineKeyboardButton("✅ Պատվիրել", callback_data="checkout:start"),
         )
         bot.send_message(c.message.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="Markdown")
         bot.answer_callback_query(c.id)
