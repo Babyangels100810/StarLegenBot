@@ -1,121 +1,149 @@
-# main.py — ONE PIECE, CLEAN
-# ---------------------------------------------
-# Works with: pyTelegramBotAPI (telebot)
-# pip install pytelegrambotapi python-dotenv requests
+# =========================
+# StarLegenBot — main.py
+# PART 1/3  (paste at the very TOP of your file)
+# =========================
 
-import os, json, time, threading, traceback, re
+import os
+import re
+import json
+import time
+import random
+import threading
+import traceback
 from datetime import datetime
-import requests
-from telebot import TeleBot, types, apihelper
-from telebot.types import InputMediaPhoto
-from dotenv import load_dotenv, find_dotenv
 from collections import defaultdict
 
-# ---------- BASIC INIT ----------
+import requests
+from telebot import TeleBot, types
+from telebot import apihelper
+from telebot.types import InputMediaPhoto
+from dotenv import load_dotenv, find_dotenv
+
+# ---- Telegram API host (պահում ենք default) ----
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
+
+# ---- .env ----
 load_dotenv()
-ENV_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ENV_ADMIN = os.getenv("ADMIN_ID", "").strip()
+ENV_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6822052289"))
 
-DATA_DIR  = "data"
-MEDIA_DIR = "media"
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(MEDIA_DIR, exist_ok=True)
-os.makedirs(os.path.join(MEDIA_DIR, "products"), exist_ok=True)
-os.makedirs(os.path.join(MEDIA_DIR, "exchange"), exist_ok=True)
+print("dotenv path:", find_dotenv())
+print("BOT_TOKEN raw:", repr(ENV_TOKEN))
+print("BOT_TOKEN len:", len(ENV_TOKEN))
 
-SETTINGS_FILE           = os.path.join(DATA_DIR, "settings.json")
-USERS_FILE              = os.path.join(DATA_DIR, "users.json")
-ORDERS_FILE             = os.path.join(DATA_DIR, "orders.json")
-THOUGHTS_FILE           = os.path.join(DATA_DIR, "thoughts.json")
-PENDING_THOUGHTS_FILE   = os.path.join(DATA_DIR, "pending_thoughts.json")
-ADS_FILE                = os.path.join(DATA_DIR, "ads.json")
-PENDING_ADS_FILE        = os.path.join(DATA_DIR, "pending_ads.json")
-PARTNERS_FILE           = os.path.join(DATA_DIR, "partners.json")
-RATES_FILE              = os.path.join(DATA_DIR, "rates.json")
+# ------------------- FILES / DIRS -------------------
+DATA_DIR   = "data"
+MEDIA_DIR  = "media"
+SET_FILE   = os.path.join(DATA_DIR, "settings.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
 
-def load_json(p, default):
+THOUGHTS_FILE = os.path.join(DATA_DIR, "thoughts.json")
+PARTNERS_FILE = os.path.join(DATA_DIR, "partners.json")
+ORDERS_FILE   = os.path.join(DATA_DIR, "orders.json")
+RATES_FILE    = os.path.join(DATA_DIR, "rates.json")
+
+def ensure_dirs():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_DIR, "products"), exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_DIR, "exchange"), exist_ok=True)
+
+ensure_dirs()
+
+# ------------------- JSON helpers -------------------
+def load_json(path, default):
     try:
-        if not os.path.exists(p):
-            with open(p, "w", encoding="utf-8") as f:
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(default, f, ensure_ascii=False, indent=2)
             return default
-        with open(p, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
+        print("load_json ERROR", path)
+        print(traceback.format_exc())
         return default
 
-def save_json(p, data):
+def save_json(path, data):
     try:
-        with open(p, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return True
-    except:
+    except Exception:
+        print("save_json ERROR", path)
+        print(traceback.format_exc())
         return False
 
-SETTINGS = load_json(SETTINGS_FILE, {
+# ------------------- RUNTIME STORE -------------------
+SETTINGS = load_json(SET_FILE, {
     "bot_token": ENV_TOKEN or "PASTE_YOUR_BOT_TOKEN_HERE",
-    "admin_id": int(ENV_ADMIN) if ENV_ADMIN.isdigit() else 6822052289,
+    "admin_id": ADMIN_ID,
     "customer_counter": 1007,
     "bot_username": "YourBotUsernameHere",
-    "alipay_rate_amd": 58
 })
 
-BOT_TOKEN = SETTINGS.get("bot_token", "")
-if not BOT_TOKEN or "PASTE_YOUR_BOT_TOKEN_HERE" in BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in .env or settings.json")
+# allow settings override
+if isinstance(SETTINGS.get("admin_id"), int):
+    ADMIN_ID = SETTINGS["admin_id"]
 
-ADMIN_ID = int(SETTINGS.get("admin_id", 6822052289))
+USERS = load_json(USERS_FILE, {})        # user_id -> {referrer_id, ...}
+GOOD_THOUGHTS = load_json(THOUGHTS_FILE, [])
+PARTNERS = load_json(PARTNERS_FILE, [])  # text entries
+ORDERS = load_json(ORDERS_FILE, [])
+
+def persist_settings():
+    save_json(SET_FILE, SETTINGS)
+
+def persist_users():
+    save_json(USERS_FILE, USERS)
+
+def persist_thoughts():
+    save_json(THOUGHTS_FILE, GOOD_THOUGHTS)
+
+def persist_partners():
+    save_json(PARTNERS_FILE, PARTNERS)
+
+def persist_orders():
+    save_json(ORDERS_FILE, ORDERS)
+
+# ------------------- BUTTON LABELS -------------------
+BTN_SHOP      = "🛍 Խանութ"
+BTN_CART      = "🛒 Զամբյուղ"
+BTN_EXCHANGE  = "💱 Փոխարկումներ"
+BTN_THOUGHTS  = "💡 Խոհուն մտքեր"
+BTN_RATES     = "📈 Օրվա կուրսեր"
+BTN_PROFILE   = "🧍 Իմ էջը"
+BTN_FEEDBACK  = "💬 Հետադարձ կապ"
+BTN_PARTNERS  = "📢 Բիզնես գործընկերներ"
+BTN_SEARCH    = "🔍 Ապրանքի որոնում"
+BTN_INVITE    = "👥 Հրավիրել ընկերների"
+BTN_HOME      = "🏠 Վերադառնալ գլխավոր մենյու"
+
+# ------------------- BOT INIT -------------------
+BOT_TOKEN = SETTINGS.get("bot_token") or ENV_TOKEN
+if not BOT_TOKEN:
+    raise RuntimeError("BOT TOKEN is empty")
 
 bot = TeleBot(BOT_TOKEN, parse_mode=None)
 
-# Remove webhook to avoid 409 conflict when polling
-try:
-    bot.remove_webhook()
-except:
-    pass
+# ------------------- UTILS -------------------
+def ts() -> int:
+    return int(time.time())
 
-# ---------- GLOBALS ----------
-USERS            = load_json(USERS_FILE, {})            # user_id -> {referrer_id,...}
-GOOD_THOUGHTS    = load_json(THOUGHTS_FILE, [])
-PENDING_THOUGHTS = load_json(PENDING_THOUGHTS_FILE, {}) # id -> dict
-ADS_STORE        = load_json(ADS_FILE, [])
-PENDING_ADS      = load_json(PENDING_ADS_FILE, {})
-ORDERS           = load_json(ORDERS_FILE, [])
-RATES_CACHE      = load_json(RATES_FILE, {"rates":{}, "updated_at": None, "error": None})
+def bot_link_with_ref(user_id: int) -> str:
+    uname = SETTINGS.get("bot_username") or "YourBotUsernameHere"
+    return f"https://t.me/{uname}?start={user_id}"
 
-NEXT_THOUGHT_ID = (max([x.get("id",1000) for x in GOOD_THOUGHTS], default=1000) + 1) if GOOD_THOUGHTS else 1001
-if PENDING_THOUGHTS:
-    NEXT_THOUGHT_ID = max(NEXT_THOUGHT_ID, max(int(k) for k in PENDING_THOUGHTS.keys())+1)
-
-NEXT_AD_ID = (max([x.get("id",5000) for x in ADS_STORE], default=5000) + 1) if ADS_STORE else 5001
-if PENDING_ADS:
-    NEXT_AD_ID = max(NEXT_AD_ID, max(int(k) for k in PENDING_ADS.keys())+1)
-
-# ---------- MENU LABELS (քո կառուցվածքը) ----------
-BTN_SHOP     = "🛍 Խանութ"
-BTN_CART     = "🛒 Զամբյուղ"
-BTN_EXCHANGE = "💱 Փոխարկումներ"
-BTN_THOUGHTS = "💡 Խոհուն մտքեր"
-BTN_RATES    = "📈 Օրվա կուրսեր"
-BTN_PROFILE  = "🧍 Իմ էջ"
-BTN_FEEDBACK = "💬 Հետադարձ կապ"
-BTN_PARTNERS = "📢 Բիզնես գործընկերներ"
-BTN_SEARCH   = "🔍 Ապրանքի որոնում"
-BTN_INVITE   = "👥 Հրավիրել ընկերների"
-BTN_MAIN     = "🏠 Գլխավոր մենյու"
-
-def build_main_menu():
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+def build_main_menu() -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(BTN_SHOP, BTN_CART)
     kb.add(BTN_EXCHANGE, BTN_THOUGHTS)
     kb.add(BTN_RATES, BTN_PROFILE)
     kb.add(BTN_FEEDBACK, BTN_PARTNERS)
     kb.add(BTN_SEARCH, BTN_INVITE)
-    kb.add(BTN_MAIN)
+    kb.add(BTN_HOME)
     return kb
 
-# ---------- WELCOME ----------
 def welcome_text(customer_no: int) -> str:
     return (
         "🐰🌸 <b>Բարի գալուստ StarLegen</b> 🛍✨\n\n"
@@ -134,1033 +162,810 @@ def welcome_text(customer_no: int) -> str:
         "✨ Ավելին արդեն պատրաստված ու օգտվելու համար ընտրեք ներքևի բաժինները 👇"
     )
 
-def bot_link_with_ref(user_id: int) -> str:
-    uname = SETTINGS.get("bot_username", "YourBotUsernameHere")
-    return f"https://t.me/{uname}?start={user_id}"
-
-# ---------- START ----------
+# ------------------- /start -------------------
 @bot.message_handler(commands=["start"])
 def on_start(m: types.Message):
+    # only private
     if getattr(m.chat, "type", "") != "private":
         return
 
-    # referral
+    uid = m.from_user.id
+
+    # capture referral
     try:
         parts = (m.text or "").split(maxsplit=1)
         if len(parts) == 2 and parts[1].isdigit():
-            uid = str(m.from_user.id)
             ref = int(parts[1])
-            if int(uid) != ref:
-                USERS.setdefault(uid, {})
-                if "referrer_id" not in USERS[uid]:
-                    USERS[uid]["referrer_id"] = ref
-                    save_json(USERS_FILE, USERS)
-    except:
+            if ref != uid:
+                rec = USERS.setdefault(str(uid), {})
+                rec.setdefault("referrer_id", ref)
+                persist_users()
+    except Exception:
         pass
 
     # customer counter
-    SETTINGS["customer_counter"] = int(SETTINGS.get("customer_counter", 1007)) + 1
-    save_json(SETTINGS_FILE, SETTINGS)
-    customer_no = SETTINGS["customer_counter"]
+    try:
+        SETTINGS["customer_counter"] = int(SETTINGS.get("customer_counter", 1007)) + 1
+    except Exception:
+        SETTINGS["customer_counter"] = 1008
+    persist_settings()
+    no = SETTINGS["customer_counter"]
 
-    # bunny photo (optional)
+    # bunny image (if exists)
     bunny = os.path.join(MEDIA_DIR, "bunny.jpg")
     if os.path.exists(bunny):
         try:
             with open(bunny, "rb") as ph:
                 bot.send_photo(m.chat.id, ph)
-        except: pass
+        except Exception:
+            pass
 
-    bot.send_message(m.chat.id, welcome_text(customer_no), parse_mode="HTML", reply_markup=build_main_menu())
+    bot.send_message(
+        m.chat.id,
+        welcome_text(no),
+        reply_markup=build_main_menu(),
+        parse_mode="HTML"
+    )
 
-@bot.message_handler(commands=["menu"])
-def on_menu(m: types.Message):
+# ------------------- '🏠 Վերադառնալ գլխավոր մենյու' -------------------
+@bot.message_handler(func=lambda m: m.text == BTN_HOME or m.text in ("/menu", "Գլխավոր մենյու"))
+def go_home(m: types.Message):
     bot.send_message(m.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
 
-# ---------- INVITE ----------
-@bot.message_handler(func=lambda msg: msg.text == BTN_INVITE)
-def invite_handler(m: types.Message):
-    uid = m.from_user.id
-    link = bot_link_with_ref(uid)
-    txt = (
-        "👥 <b>Կիսվեք բոտով</b>\n\n"
-        f"Ձեր հրավերի հղումը՝\n{link}\n\n"
-        "Ուղարկեք սա ընկերներին 🌸"
+# ------------------- Invite -------------------
+@bot.message_handler(func=lambda m: m.text == BTN_INVITE)
+def invite_link(m: types.Message):
+    link = bot_link_with_ref(m.from_user.id)
+    bot.send_message(
+        m.chat.id,
+        f"👥 <b>Կիսվեք բոտով և ստացեք բոնուսներ</b>\n\nՁեր հղումը՝\n{link}",
+        parse_mode="HTML"
     )
-    bot.send_message(m.chat.id, txt, parse_mode="HTML")
 
-# ---------- DAILY RATES ----------
+# ------------------- Thoughts (խոհուն մտքեր) -------------------
+@bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
+def thoughts_menu(m: types.Message):
+    if not GOOD_THOUGHTS:
+        bot.send_message(m.chat.id, "Այս պահին հրապարակված մտքեր չկան։")
+        return
+    text = "💡 <b>Վերջին մտքեր</b>\n\n" + "\n\n".join(GOOD_THOUGHTS[-5:])
+    bot.send_message(m.chat.id, text, parse_mode="HTML")
+
+# ------------------- Partners -------------------
+@bot.message_handler(func=lambda m: m.text == BTN_PARTNERS)
+def partners_list(m: types.Message):
+    if not PARTNERS:
+        bot.send_message(m.chat.id, "Այս պահին գործընկերների հայտարարություններ չկան։")
+        return
+    text = "📢 <b>Բիզնես գործընկերներ</b>\n\n" + "\n\n".join(PARTNERS[-5:])
+    bot.send_message(m.chat.id, text, parse_mode="HTML")
+
+# ------------------- Daily Rates (Ավտոմատ թարմացում) -------------------
+RATES_CACHE = {"rates": {}, "updated_at": None, "error": None}
+
 def fetch_rates():
     try:
-        r = requests.get("https://api.exchangerate.host/latest", params={"base":"AMD","symbols":"USD,EUR,RUB,GBP,CNY"}, timeout=10)
-        data = r.json() if r.ok else {}
-        raw = data.get("rates", {})
-        conv = {}
-        for k,v in raw.items():
-            if v: conv[k] = round(1.0/v, 4)  # 1 FX = ? AMD
-        RATES_CACHE["rates"] = conv
+        url = "https://api.exchangerate.host/latest"
+        symbols = ["USD", "EUR", "RUB", "GBP", "CNY"]
+        r = requests.get(url, params={"base": "AMD", "symbols": ",".join(symbols)}, timeout=10)
+        data = r.json()
+        raw = (data or {}).get("rates", {})
+        converted = {}
+        for k, v in raw.items():
+            if v:
+                converted[k] = round(1.0 / v, 4)  # 1 FX = ? AMD
+        RATES_CACHE["rates"] = converted
         RATES_CACHE["updated_at"] = datetime.utcnow().isoformat() + "Z"
         RATES_CACHE["error"] = None
         save_json(RATES_FILE, RATES_CACHE)
     except Exception as e:
         RATES_CACHE["error"] = str(e)
-        save_json(RATES_FILE, RATES_CACHE)
 
 def rates_loop():
     while True:
         fetch_rates()
-        time.sleep(600)
+        time.sleep(600)  # 10 րոպե
 
+# start background refresher
 threading.Thread(target=rates_loop, daemon=True).start()
 fetch_rates()
 
 @bot.message_handler(func=lambda m: m.text == BTN_RATES)
 def show_rates(m: types.Message):
-    rates = RATES_CACHE.get("rates", {})
-    if not rates:
-        return bot.send_message(m.chat.id, "❗️ Կուրսերը հասանելի չեն հիմա, փորձիր ուշ")
+    try:
+        cache = load_json(RATES_FILE, RATES_CACHE)
+    except Exception:
+        cache = RATES_CACHE
+    err = cache.get("error")
+    rates = cache.get("rates", {})
+    if err or not rates:
+        bot.send_message(m.chat.id, "❗️ Չհաջողվեց ստանալ կուրսերը, փորձեք քիչ հետո։")
+        return
     flags = {"USD":"🇺🇸","EUR":"🇪🇺","RUB":"🇷🇺","GBP":"🇬🇧","CNY":"🇨🇳"}
     order = ["USD","EUR","RUB","GBP","CNY"]
-    lines = ["📈 <b>Օրվա կուրսեր (AMD)</b>", ""]
-    for c in order:
-        if c in rates:
-            lines.append(f"{flags.get(c,'')} 1 {c} = <b>{rates[c]} AMD</b>")
+    lines = ["📈 <b>Օրվա կուրսեր</b> (AMD)", ""]
+    for ccy in order:
+        if ccy in rates:
+            lines.append(f"{flags.get(ccy,'')} 1 {ccy} = <b>{rates[ccy]}</b> AMD")
     lines.append("")
-    lines.append(f"🕒 Թարմացվել է (UTC): {RATES_CACHE.get('updated_at','—')}")
+    lines.append(f"🕒 Թարմացվել է (UTC): {cache.get('updated_at','-')}")
     bot.send_message(m.chat.id, "\n".join(lines), parse_mode="HTML")
 
-# ---------- PARTNERS ----------
-@bot.message_handler(func=lambda m: m.text == BTN_PARTNERS)
-def show_partners(m: types.Message):
-    arr = load_json(PARTNERS_FILE, [])
-    if not arr:
-        return bot.send_message(m.chat.id, "Այս պահին գործընկերների հայտարարություններ չկան։")
-    text = "📢 Բիզնես գործընկերներ\n\n" + "\n\n".join(arr[-5:])
-    bot.send_message(m.chat.id, text)
-
-# ---------- THOUGHTS (with admin moderation) ----------
-STATE = {}
-FORM  = {}
-RL = defaultdict(dict)
-
-def rate_limited(uid: int, key: str, sec: int) -> bool:
-    last = RL[uid].get(key, 0)
-    now  = int(time.time())
-    if now - last < sec: return True
-    RL[uid][key] = now
-    return False
-
-GT_TEXT, GT_AUTHOR = "GT_TEXT", "GT_AUTHOR"
-
-@bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
-def thoughts_menu(m: types.Message):
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("➕ Ավելացնել միտք", callback_data="gt:new"))
-    if GOOD_THOUGHTS:
-        kb.add(types.InlineKeyboardButton("📚 Դիտել վերջինները", callback_data="gt:list:1"))
-    bot.send_message(m.chat.id, "«Խոհուն մտքեր» ✨", reply_markup=kb)
-
-def render_thoughts_page(page: int):
-    total = len(GOOD_THOUGHTS)
-    if total == 0:
-        return "Այս պահին ասույթներ չկան։", None
-    page = max(1, min(page, total))
-    item = GOOD_THOUGHTS[page-1]
-    txt = f"🧠 <b>Լավ միտք</b>\n\n{item['text']}\n\n— Էջ {page}/{total}"
-    kb = types.InlineKeyboardMarkup()
-    nav = []
-    if page>1: nav.append(types.InlineKeyboardButton("⬅️ Նախորդ", callback_data=f"gt:list:{page-1}"))
-    if page<total: nav.append(types.InlineKeyboardButton("Այժմոք ➡️", callback_data=f"gt:list:{page+1}"))
-    if nav: kb.row(*nav)
-    kb.add(types.InlineKeyboardButton("🏠 Գլխավոր", callback_data="go_home"))
-    return txt, kb
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("gt:"))
-def gt_cb(c: types.CallbackQuery):
-    parts = c.data.split(":")
-    action = parts[1]
-    if action == "new":
-        if rate_limited(c.from_user.id, "gt_submit", 180):
-            return bot.answer_callback_query(c.id, "Խնդրում ենք փորձել ավելի ուշ")
-        STATE[c.from_user.id] = GT_TEXT
-        FORM[c.from_user.id] = {}
-        bot.answer_callback_query(c.id)
-        bot.send_message(c.message.chat.id, "✍️ Գրեք ձեր մտածումը (մինչև 400 նիշ)։")
-    elif action == "list" and len(parts)==3:
-        p = int(parts[2])
-        txt, kb = render_thoughts_page(p)
-        bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
-        bot.answer_callback_query(c.id)
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id) == GT_TEXT)
-def gt_collect_text(m: types.Message):
-    t = (m.text or "").strip()
-    if not t:
-        return bot.send_message(m.chat.id, "Դատարկ է 🤔")
-    if len(t) > 400:
-        return bot.send_message(m.chat.id, "Կրճատեք մինչև 400 նիշ։")
-    FORM[m.from_user.id]["text"] = t
-    STATE[m.from_user.id] = GT_AUTHOR
-    bot.send_message(m.chat.id, "✍️ Նշեք հեղինակին (կամ «—»)")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id) == GT_AUTHOR)
-def gt_collect_author(m: types.Message):
-    global NEXT_THOUGHT_ID
-    author = (m.text or "—").strip() or "—"
-    text = FORM.get(m.from_user.id, {}).get("text", "")
-    th_id = NEXT_THOUGHT_ID; NEXT_THOUGHT_ID += 1
-    sub = m.from_user.username or f"id{m.from_user.id}"
-    PENDING_THOUGHTS[str(th_id)] = {
-        "id": th_id,
-        "text": f"{text}\n\n— {author}",
-        "submitter_id": m.from_user.id,
-        "submitter_name": sub,
-        "created_at": datetime.utcnow().isoformat()
-    }
-    save_json(PENDING_THOUGHTS_FILE, PENDING_THOUGHTS)
-    STATE[m.from_user.id] = None; FORM.pop(m.from_user.id, None)
-    bot.send_message(m.chat.id, "✅ Ուղարկված է ադմինին հաստատման։")
-
+# ------------------- Exchange (stub menu) -------------------
+@bot.message_handler(func=lambda m: m.text == BTN_EXCHANGE)
+def exchange_menu(m: types.Message):
     kb = types.InlineKeyboardMarkup()
     kb.add(
-        types.InlineKeyboardButton("✅ Հաստատել", callback_data=f"gtadm:ok:{th_id}"),
-        types.InlineKeyboardButton("❌ Մերժել", callback_data=f"gtadm:no:{th_id}")
+        types.InlineKeyboardButton("PI ➜ USDT", callback_data="ex:pi"),
+        types.InlineKeyboardButton("FTN ➜ AMD", callback_data="ex:ftn"),
     )
-    bot.send_message(ADMIN_ID, f"🧠 Նոր միտք #{th_id}\n\n{text}\n\n— {author}", reply_markup=kb)
+    kb.add(types.InlineKeyboardButton("Alipay լիցքավորում", callback_data="ex:ali"))
+    bot.send_message(m.chat.id, "💱 Ընտրեք փոխարկման ծառայությունը 👇", reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("gtadm:"))
-def gt_admin(c: types.CallbackQuery):
-    if c.from_user.id != ADMIN_ID:
-        return bot.answer_callback_query(c.id, "Միայն ադմինը")
-    _, act, th = c.data.split(":")
-    item = PENDING_THOUGHTS.get(th)
-    if not item:
-        return bot.answer_callback_query(c.id, "Չի գտնվել")
-    if act == "ok":
-        GOOD_THOUGHTS.append({
-            "id": item["id"],
-            "text": item["text"],
-            "posted_by": "@"+item["submitter_name"]
-        })
-        save_json(THOUGHTS_FILE, GOOD_THOUGHTS)
-        PENDING_THOUGHTS.pop(th, None)
-        save_json(PENDING_THOUGHTS_FILE, PENDING_THOUGHTS)
-        bot.answer_callback_query(c.id, "Հաստատվեց")
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("ex:"))
+def on_exchange_cb(c: types.CallbackQuery):
+    typ = c.data.split(":", 1)[1]
+    if typ == "pi":
+        text = ("📌 PI ➜ USDT\n"
+                "Մենք կատարում ենք PI–ից USDT փոխարկում՝ շուկայական կուրս + ծառայության վճար։\n"
+                "Կապնվեք ադմինի հետ՝ մանրամասների համար։")
+    elif typ == "ftn":
+        text = ("📌 FTN ➜ AMD\n"
+                "FTN-ը փոխանցում եք մեր հաշվին, ստանում եք AMD՝ 10% սպասարկման վճարով։")
     else:
-        PENDING_THOUGHTS.pop(th, None)
-        save_json(PENDING_THOUGHTS_FILE, PENDING_THOUGHTS)
-        bot.answer_callback_query(c.id, "Մերժվեց")
+        text = ("📌 Alipay լիցքավորում\n"
+                "1 CNY = 58֏ (տեղեկատվական), մանրամասների համար գրեք ադմինին։")
+    bot.answer_callback_query(c.id)
+    bot.send_message(c.message.chat.id, text)
 
-# ---------- ADS (简化 ցուցադրում + submit–approve) ----------
-AD_BNAME, AD_DESC, AD_WEB, AD_TG, AD_VIBER, AD_WA, AD_PHONE, AD_ADDR, AD_HOURS, AD_CTA_TEXT, AD_CTA_URL, AD_CONFIRM = range(12)
-
-@bot.message_handler(func=lambda m: m.text == BTN_PARTNERS)
-def partners(m: types.Message):
-    txt, kb = render_ads_list(1)
-    bot.send_message(m.chat.id, txt, parse_mode="HTML", reply_markup=kb)
-
-def render_ads_list(page=1, per=5):
-    active = [a for a in ADS_STORE if a.get("active")]
-    total = len(active)
-    if total==0:
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("➕ Դառնալ գովազդատու", callback_data="ads:new"))
-        kb.add(types.InlineKeyboardButton("🏠 Գլխավոր", callback_data="go_home"))
-        return "Այս պահին առաջարկներ չկան։", kb
-    page = max(1, min(page, (total+per-1)//per))
-    s, e = (page-1)*per, (page-1)*per+per
-    chunk = active[s:e]
-    lines = ["📣 <b>Գովազդային առաջարկներ</b>", ""]
-    kb = types.InlineKeyboardMarkup()
-    for ad in chunk:
-        lines.append(f"🏪 <b>{ad.get('title')}</b>")
-        lines.append(f"📝 {ad.get('desc','')}")
-        if ad.get("website"): lines.append(f"🌐 {ad['website']}")
-        lines.append(f"Telegram: {ad.get('telegram','—')}")
-        lines.append(f"Viber: {ad.get('viber','—')} | WhatsApp: {ad.get('whatsapp','—')}")
-        lines.append(f"☎️ {ad.get('phone','—')} | 📍 {ad.get('address','—')}")
-        lines.append("— — —")
-        if ad.get("url"):
-            kb.add(types.InlineKeyboardButton(ad.get("cta","Դիտել"), url=ad["url"]))
-    nav=[]
-    if s>0: nav.append(types.InlineKeyboardButton("⬅️ Նախորդ", callback_data=f"ads:page:{page-1}"))
-    if e<total: nav.append(types.InlineKeyboardButton("Այժմոք ➡️", callback_data=f"ads:page:{page+1}"))
-    if nav: kb.row(*nav)
-    kb.add(types.InlineKeyboardButton("➕ Դառնալ գովազդատու", callback_data="ads:new"))
-    kb.add(types.InlineKeyboardButton("🏠 Գլխավոր", callback_data="go_home"))
-    return "\n".join(lines), kb
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("ads:"))
-def ads_cb(c: types.CallbackQuery):
-    parts=c.data.split(":")
-    if parts[1]=="page":
-        p=int(parts[2]); txt,kb=render_ads_list(p)
-        bot.edit_message_text(txt, c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
-        bot.answer_callback_query(c.id)
-    elif parts[1]=="new":
-        STATE[c.from_user.id]=AD_BNAME; FORM[c.from_user.id]={}
-        bot.answer_callback_query(c.id)
-        bot.send_message(c.message.chat.id,"🏪 Գրեք խանութի/ծառայության անունը:")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_BNAME)
-def ad_bname(m: types.Message):
-    FORM[m.from_user.id]["business_name"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_DESC
-    bot.send_message(m.chat.id,"📝 Մարկետինգային նկարագրությունը (կարճ):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_DESC)
-def ad_desc(m: types.Message):
-    FORM[m.from_user.id]["desc"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_WEB
-    bot.send_message(m.chat.id,"🌐 Վեբսայթ (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_WEB)
-def ad_web(m: types.Message):
-    FORM[m.from_user.id]["website"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_TG
-    bot.send_message(m.chat.id,"📲 Telegram (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_TG)
-def ad_tg(m: types.Message):
-    FORM[m.from_user.id]["telegram"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_VIBER
-    bot.send_message(m.chat.id,"📞 Viber (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_VIBER)
-def ad_viber(m: types.Message):
-    FORM[m.from_user.id]["viber"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_WA
-    bot.send_message(m.chat.id,"📞 WhatsApp (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_WA)
-def ad_wa(m: types.Message):
-    FORM[m.from_user.id]["whatsapp"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_PHONE
-    bot.send_message(m.chat.id,"☎️ Հեռախոս (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_PHONE)
-def ad_phone(m: types.Message):
-    FORM[m.from_user.id]["phone"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_ADDR
-    bot.send_message(m.chat.id,"📍 Հասցե (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_ADDR)
-def ad_addr(m: types.Message):
-    FORM[m.from_user.id]["address"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_HOURS
-    bot.send_message(m.chat.id,"🕒 Աշխ. ժամեր (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_HOURS)
-def ad_hours(m: types.Message):
-    FORM[m.from_user.id]["hours"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_CTA_TEXT
-    bot.send_message(m.chat.id,"🔘 CTA տեքստ (օր. «Պատվիրել»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_CTA_TEXT)
-def ad_cta_text(m: types.Message):
-    FORM[m.from_user.id]["cta_text"]=(m.text or "Դիտել").strip() or "Դիտել"
-    STATE[m.from_user.id]=AD_CTA_URL
-    bot.send_message(m.chat.id,"🔗 CTA URL (կամ «—»):")
-
-@bot.message_handler(func=lambda m: STATE.get(m.from_user.id)==AD_CTA_URL)
-def ad_cta_url(m: types.Message):
-    FORM[m.from_user.id]["cta_url"]=(m.text or "").strip()
-    STATE[m.from_user.id]=AD_CONFIRM
-    d=FORM[m.from_user.id]
-    prev=(
-        f"📣 <b>Գովազդի հայտ — նախադիտում</b>\n\n"
-        f"🏪 {d.get('business_name')}\n"
-        f"📝 {d.get('desc')}\n"
-        f"🌐 {d.get('website')}\n"
-        f"Telegram: {d.get('telegram')} | Viber: {d.get('viber')} | WhatsApp: {d.get('whatsapp')}\n"
-        f"☎️ {d.get('phone')} | 📍 {d.get('address')} | 🕒 {d.get('hours')}\n"
-        f"🔘 {d.get('cta_text')} → {d.get('cta_url')}\n\n"
-        f"✅ Հաստատե՞լ ադմինին ուղարկելը:"
-    )
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ Ուղարկել ադմինին", callback_data="ad:send"))
-    kb.add(types.InlineKeyboardButton("❌ Չեղարկել", callback_data="ad:cancel"))
-    bot.send_message(m.chat.id, prev, parse_mode="HTML", reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data in ("ad:send","ad:cancel"))
-def ad_send(c: types.CallbackQuery):
-    if c.data=="ad:cancel":
-        STATE[c.from_user.id]=None; FORM.pop(c.from_user.id, None)
-        bot.answer_callback_query(c.id, "Չեղարկվեց")
-        try: bot.edit_message_text("Չեղարկվեց", c.message.chat.id, c.message.message_id)
-        except: pass
-        return
-    d=FORM.get(c.from_user.id, {})
-    if not d:
-        return bot.answer_callback_query(c.id,"Տվյալներ չկան")
-    global NEXT_AD_ID
-    ad_id=NEXT_AD_ID; NEXT_AD_ID+=1
-    PENDING_ADS[str(ad_id)] = {
-        "id": ad_id, "submitter_id": c.from_user.id,
-        "submitter_name": c.from_user.username or f"id{c.from_user.id}",
-        **d, "created_at": datetime.utcnow().isoformat()
-    }
-    save_json(PENDING_ADS_FILE, PENDING_ADS)
-    STATE[c.from_user.id]=None; FORM.pop(c.from_user.id, None)
-    bot.answer_callback_query(c.id,"Ուղարկվեց ադմինին")
-    try: bot.edit_message_text("✅ Ուղարկվեց ադմինին հաստատման", c.message.chat.id, c.message.message_id)
-    except: pass
-
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ Հաստատել", callback_data=f"adadm:ok:{ad_id}"))
-    kb.add(types.InlineKeyboardButton("❌ Մերժել", callback_data=f"adadm:no:{ad_id}"))
-    a=PENDING_ADS[str(ad_id)]
-    admin_txt=(f"📣 Նոր գովազդ #{ad_id}\n\n"
-               f"🏪 {a.get('business_name')}\n📝 {a.get('desc')}\n🌐 {a.get('website')}\n"
-               f"TG:{a.get('telegram')} | Viber:{a.get('viber')} | WA:{a.get('whatsapp')}\n"
-               f"☎️ {a.get('phone')} | 📍 {a.get('address')} | 🕒 {a.get('hours')}\n"
-               f"🔘 {a.get('cta_text')} → {a.get('cta_url')}")
-    bot.send_message(ADMIN_ID, admin_txt, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("adadm:"))
-def ad_admin(c: types.CallbackQuery):
-    if c.from_user.id!=ADMIN_ID:
-        return bot.answer_callback_query(c.id,"Միայն ադմինը")
-    _,act,aid=c.data.split(":")
-    item=PENDING_ADS.get(aid)
-    if not item: return bot.answer_callback_query(c.id,"Չի գտնվել")
-    if act=="ok":
-        ADS_STORE.append({
-            "id": item["id"], "title": item["business_name"],
-            "desc": item["desc"], "website": item["website"],
-            "telegram": item["telegram"], "viber": item["viber"], "whatsapp": item["whatsapp"],
-            "phone": item["phone"], "address": item["address"], "hours": item["hours"],
-            "cta": item["cta_text"] or "Դիտել", "url": item["cta_url"] or "", "active": True
-        })
-        save_json(ADS_FILE, ADS_STORE)
-        PENDING_ADS.pop(aid, None); save_json(PENDING_ADS_FILE, PENDING_ADS)
-        bot.answer_callback_query(c.id,"Հաստատվեց")
-    else:
-        PENDING_ADS.pop(aid, None); save_json(PENDING_ADS_FILE, PENDING_ADS)
-        bot.answer_callback_query(c.id,"Մերժվեց")
-
-# ---------- SHOP + PRODUCTS + SLIDER + CART ----------
-PRODUCTS = {
-    "BA100810": {
-        "title": "Գորգ – BA100810",
-        "category": "home",
-        "images": [
-            "media/products/BA100810.jpg",
-            "media/products/shared/care.jpg",
-            "media/products/shared/layers.jpg",
-            "media/products/shared/absorb.jpg",
-            "media/products/shared/universal.jpg",
-            "media/products/shared/interior.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 320, "best": True,
-        "bullets": [
-            "Չսահող հիմք՝ անվտանգ քայլք սահուն մակերեսների վրա",
-            "Թանձր, փափուկ շերտ՝ հարմարավետ քայլքի զգացողություն",
-            "Հեշտ մաքրվում՝ ձեռքով կամ լվացքի մեքենայում մինչև 30°",
-            "Գույնի կայունություն՝ չի խամրում և չի թափվում",
-        ],
-        "long_desc": "Թիթեռ–ծաղիկ 3D դիզայնը տունը դարձնում է ավելի ջերմ ու կոկիկ։ Համապատասխանում է մուտքին, խոհանոցին, լոգարանին ու նույնիսկ ննջարանին։ Հակասահող հիմքը պահում է գորգը տեղում, իսկ խիտ վերին շերտը արագ է չորանում ու չի ներծծում տհաճ հոտեր։"
-    },
-    "BA100811": {
-        "title": "Գորգ – BA100811", "category": "home",
-        "images": [
-            "media/products/BA100811.jpg",
-            "media/products/shared/care.jpg",
-            "media/products/shared/absorb.jpg",
-            "media/products/shared/interior.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 295, "best": True,
-        "bullets": [
-            "Խիտ գործվածք՝ երկար ծառայության համար",
-            "Անհոտ և անվտանգ նյութեր ողջ ընտանիքի համար",
-            "Արագ չորացում՝ խոնավ տարածքներին հարմար",
-        ],
-        "long_desc": "Մինիմալիստական գույներ՝ գեղեցիկ համադրվում են ցանկացած ինտերիերի հետ։ Լավ լուծում է լոգարանի/խոհանոցի համար՝ արագ կլանելով խոնավությունը և չթողնելով հետքեր։"
-    },
-    "BA100812": {
-        "title": "Գորգ – BA100812", "category": "home",
-        "images": [
-            "media/products/BA100812.jpg",
-            "media/products/shared/universal.jpg",
-            "media/products/shared/layers.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 241, "best": False,
-        "bullets": [
-            "Կոկիկ եզրեր՝ պրեմիում տեսք",
-            "Ձևը չի փոխում՝ կանոնավոր լվացումից հետո էլ",
-        ],
-        "long_desc": "Էսթետիկ կոմպոզիցիա՝ նուրբ դետալներով։ Հարմար է միջանցքների, մուտքի և փոքր սենյակների համար։"
-    },
-    "BA100813": {
-        "title": "Գորգ – BA100813", "category": "home",
-        "images": [
-            "media/products/BA100813.jpg",
-            "media/products/shared/absorb.jpg",
-            "media/products/shared/layers.jpg",
-            "media/products/shared/interior.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 198, "best": False,
-        "bullets": [
-            "Հարմար ծանրաբեռնված անցուղիների համար",
-            "Չի ծալվում, չի սահում՝ շնորհիվ հիմքի կառուցվածքի",
-        ],
-        "long_desc": "Գործնական և դիմացկուն տարբերակ՝ ամենօրյա ակտիվ օգտագործման համար։"
-    },
-    "BA100814": {
-        "title": "Գորգ – BA100814", "category": "home",
-        "images": [
-            "media/products/BA100814.jpg",
-            "media/products/shared/care.jpg",
-            "media/products/shared/universal.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 175, "best": False,
-        "bullets": [
-            "Փափուկ մակերես՝ հաճելի հպում",
-            "Գունային կայունություն՝ երկարատև օգտագործման ընթացքում",
-        ],
-        "long_desc": "Բնական երանգներ՝ հանգիստ և մաքուր միջավայրի համար։ Հեշտ է տեղափոխել ու տեղադրել՝ առանց հետքեր թողնելու։"
-    },
-    "BA100815": {
-        "title": "Գորգ – BA100815", "category": "home",
-        "images": [
-            "media/products/BA100815.jpg",
-            "media/products/shared/interior.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 210, "best": False,
-        "bullets": [
-            "Խիտ շերտ՝ բարձր դիմացկունություն",
-            "Եզրերը չեն փշրվում",
-        ],
-        "long_desc": "Հարմար է ինչպես բնակարանի, այնպես էլ օֆիսի համար․ տեսքը մնում է կոկիկ անգամ հաճախակի լվացումից հետո։"
-    },
-    "BA100816": {
-        "title": "Գորգ – BA100816", "category": "home",
-        "images": [
-            "media/products/BA100816.jpg",
-            "media/products/shared/layers.jpg",
-            "media/products/shared/absorb.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 233, "best": False,
-        "bullets": [
-            "Դեկորատիվ եզրագծեր",
-            "Չսահող հիմք՝ առավել անվտանգություն",
-        ],
-        "long_desc": "Էլեգանտ շեշտադրում ցանկացած ինտերիերում։ Պահպանում է տեսքը երկարատև օգտագործման ընթացքում։"
-    },
-    "BA100817": {
-        "title": "Գորգ – BA100817", "category": "home",
-        "images": [
-            "media/products/BA100817.jpg",
-            "media/products/shared/care.jpg",
-            "media/products/shared/universal.jpg",
-            "media/products/shared/interior.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 221, "best": False,
-        "bullets": [
-            "Իդեալ է խոհանոցի և մուտքի համար",
-            "Արագ չորացում՝ առանց հետքերի",
-        ],
-        "long_desc": "Գործնական լուծում՝ գեղեցիկ դետալներով, որը պահպանում է մաքրությունն ու հիգիենան։"
-    },
-    "BA100818": {
-        "title": "Գորգ – BA100818", "category": "home",
-        "images": [
-            "media/products/BA100818.jpg",
-            "media/products/shared/layers.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 187, "best": False,
-        "bullets": [
-            "Կոմպակտ չափ՝ հեշտ տեղադրում",
-            "Թեթև քաշ՝ հարմար տեղափոխել",
-        ],
-        "long_desc": "Կոկիկ տարբերակ փոքր տարածքների համար՝ պահելով հարմարավետությունն ու գեղեցկությունը։"
-    },
-    "BA100819": {
-        "title": "Գորգ – BA100819", "category": "home",
-        "images": [
-            "media/products/BA100819.jpg",
-            "media/products/shared/absorb.jpg",
-            "media/products/shared/interior.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 205, "best": False,
-        "bullets": [
-            "Կոկիկ տեսք՝ մաքուր եզրերով",
-            "Հակասահող հիմք՝ կայուն դիրք",
-        ],
-        "long_desc": "Գեղեցիկ լուծում միջանցքի և լոգարանի համար․ արագ է կլանում խոնավությունը և չի թողնում լաքաներ։"
-    },
-    "BA100820": {
-        "title": "Գորգ – BA100820", "category": "home",
-        "images": [
-            "media/products/BA100820.jpg",
-            "media/products/shared/universal.jpg",
-            "media/products/shared/interior.jpg",
-            "media/products/shared/advantages.jpg",
-        ],
-        "old_price": 2560, "price": 1690, "size": "40×60 սմ",
-        "sold": 199, "best": False,
-        "bullets": [
-            "Էսթետիկ կոմպոզիցիա՝ բնական երանգներ",
-            "Դիմացկուն հիմք՝ երկար սպասարկում",
-        ],
-        "long_desc": "Թարմ դիզայն, որը հեշտ է համադրել ցանկացած ինտերիերի հետ։ Պահպանում է ձևը և հեշտությամբ մաքրվում է։"
-    },
-}
-
-def shop_keyboard():
+# ------------------- Shop (Categories) -------------------
+@bot.message_handler(func=lambda m: m.text == BTN_SHOP)
+def shop_menu(m: types.Message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("⌚ Սմարթ ժամացույցներ", "💻 Համակարգչային աքսեսուարներ")
     kb.add("🚗 Ավտոմեքենայի պարագաներ", "🏠 Կենցաղային պարագաներ")
     kb.add("🍳 Խոհանոցային տեխնիկա", "💅 Խնամքի պարագաներ")
     kb.add("🚬 Էլեկտրոնային ծխախոտ", "👩 Կանացի (շուտով)")
     kb.add("👨 Տղամարդու (շուտով)", "🧒 Մանկական (շուտով)")
-    kb.add(BTN_MAIN)
-    return kb
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "🛍 Խանութ — ընտրեք կատեգորիա 👇", reply_markup=kb)
 
-@bot.message_handler(func=lambda m: m.text == BTN_SHOP)
-def shop_menu(m: types.Message):
-    bot.send_message(m.chat.id, "🛍 Խանութ — ընտրեք կատեգորիա 👇", reply_markup=shop_keyboard())
-
-def codes_by_category(cat):
-    return [code for code,p in PRODUCTS.items() if p.get("category")==cat]
-
-@bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
-def home_cat(m: types.Message):
-    for code in codes_by_category("home"):
-        p = PRODUCTS[code]
-        main_img = (p.get("images") or [None])[0]
-        discount = int(round(100 - (p["price"]*100/p["old_price"])))
-        best = "🔥 Լավագույն վաճառվող\n" if p.get("best") else ""
-        caption = (
-            f"{best}<b>{p['title']}</b>\n"
-            f"Չափս՝ {p['size']}\n"
-            f"Հին գին — {p['old_price']}֏ (−{discount}%)\n"
-            f"Նոր գին — <b>{p['price']}֏</b>\n"
-            f"Կոդ՝ <code>{code}</code>"
-        )
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("👀 Դիտել ամբողջությամբ", callback_data=f"p:{code}"))
-        try:
-            if main_img and os.path.exists(main_img):
-                with open(main_img,"rb") as ph:
-                    bot.send_photo(m.chat.id, ph, caption=caption, parse_mode="HTML", reply_markup=kb)
-            else:
-                bot.send_message(m.chat.id, caption, parse_mode="HTML", reply_markup=kb)
-        except:
-            bot.send_message(m.chat.id, caption, parse_mode="HTML", reply_markup=kb)
-        time.sleep(0.15)
-    back = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    back.add("⬅️ Վերադառնալ խանութ", BTN_MAIN)
-    bot.send_message(m.chat.id, "📎 Վերևում տեսեք քարտիկները։", reply_markup=back)
-
+# back to shop button
 @bot.message_handler(func=lambda m: m.text == "⬅️ Վերադառնալ խանութ")
 def back_to_shop(m: types.Message):
     shop_menu(m)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("p:"))
-def show_product(c: types.CallbackQuery):
-    code = c.data.split(":",1)[1]
-    p = PRODUCTS.get(code)
-    if not p:
-        return bot.answer_callback_query(c.id, "Չի գտնվել")
-    discount = int(round(100 - (p["price"]*100/p["old_price"])))
-    bullets = "\n".join([f"✅ {b}" for b in p.get("bullets",[])])
-    caption = (
-        f"🌸 <b>{p['title']}</b>\n"
-        f"✔️ Չափս՝ {p['size']}\n"
-        f"{bullets}\n\n{p.get('long_desc','')}\n\n"
-        f"Հին գին — {p['old_price']}֏ (−{discount}%)\n"
-        f"Նոր գին — <b>{p['price']}֏</b>\n"
-        f"Վաճառված — {p.get('sold',0)} հատ\n"
-        f"Կոդ՝ <code>{code}</code>"
-    )
-    imgs = [x for x in p.get("images",[]) if x and os.path.exists(x)]
-    kb = slider_kb(code, 0, max(1,len(imgs)))
-    if imgs:
-        with open(imgs[0],"rb") as ph:
-            bot.send_photo(c.message.chat.id, ph, caption=caption, parse_mode="HTML", reply_markup=kb)
-    else:
-        bot.send_message(c.message.chat.id, caption, parse_mode="HTML", reply_markup=kb)
-    bot.answer_callback_query(c.id)
+# ------------------- Category stubs (empty) -------------------
+@bot.message_handler(func=lambda m: m.text == "⌚ Սմարթ ժամացույցներ")
+def cat_watches(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "⌚ Այստեղ կլինեն Սմարթ ժամացույցների ապրանքները։", reply_markup=kb)
 
-def slider_kb(code, idx, total):
-    kb = types.InlineKeyboardMarkup()
-    if total>1:
-        kb.row(
-            types.InlineKeyboardButton("◀️", callback_data=f"slider:{code}:{(idx-1)%total}"),
-            types.InlineKeyboardButton("▶️", callback_data=f"slider:{code}:{(idx+1)%total}")
-        )
-    kb.row(
+@bot.message_handler(func=lambda m: m.text == "💻 Համակարգչային աքսեսուարներ")
+def cat_pc(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "💻 Այստեղ կլինեն Համակարգչային աքսեսուարները։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "🚗 Ավտոմեքենայի պարագաներ")
+def cat_car(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "🚗 Այստեղ կլինեն Ավտոմեքենայի պարագաները։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "🍳 Խոհանոցային տեխնիկա")
+def cat_kitchen(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "🍳 Այստեղ կլինեն Խոհանոցային տեխնիկայի ապրանքները։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "💅 Խնամքի պարագաներ")
+def cat_care(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "💅 Այստեղ կլինեն Խնամքի պարագաները։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "🚬 Էլեկտրոնային ծխախոտ")
+def cat_ecig(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "🚬 Այստեղ կլինեն Էլեկտրոնային ծխախոտի ապրանքները։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "👩 Կանացի (շուտով)")
+def cat_women(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "👩 Կանացի ապրանքները հասանելի կլինեն շուտով։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "👨 Տղամարդու (շուտով)")
+def cat_men(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "👨 Տղամարդու ապրանքները հասանելի կլինեն շուտով։", reply_markup=kb)
+
+@bot.message_handler(func=lambda m: m.text == "🧒 Մանկական (շուտով)")
+def cat_kids(m: types.Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("⬅️ Վերադառնալ խանութ", BTN_HOME)
+    bot.send_message(m.chat.id, "🧒 Մանկական ապրանքները հասանելի կլինեն շուտով։", reply_markup=kb)
+
+# ------------------- Household (will show 11 cards from PRODUCTS)
+# PRODUCTS dict and product handlers will be added in PART 2/3
+@bot.message_handler(func=lambda m: m.text == "🏠 Կենցաղային պարագաներ")
+def cat_household(m: types.Message):
+    bot.send_message(m.chat.id, "⏳ Բեռնավորում ենք ապրանքները…")
+    # Actual listing is in PART 2/3 once PRODUCTS are defined
+    # After paste Part 2/3, this handler will send cards automatically.
+
+# =========================
+#   END OF PART 1/3
+#   (Wait for PART 2/3 — products + slider + add-to-cart buttons)
+# =========================
+# =========================
+# StarLegenBot — main.py
+# PART 2/3  (paste directly below Part 1/3)
+# =========================
+
+# ------------------- PRODUCTS -------------------
+PRODUCTS = {
+    "BA100810": {
+        "title": "Գորգ «Ծաղկային դիզայն»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 325,
+        "stock": 99,
+        "category": "home",
+        "img": "media/products/BA100810.jpg",
+        "images": [
+            "media/products/BA100810.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+        ],
+        "bullets": [
+            "Հարմար է մուտքի, խոհանոցի և լոգասենյակի համար",
+            "Հեշտ լվացվող և արագ չորացող",
+            "Գեղեցիկ թարմացված դիզայն"
+        ],
+        "long_desc": "🌸 Մեր ծաղկային դիզայնով գորգը կզարդարի ձեր տունը։"
+    },
+    "BA100811": {
+        "title": "Գորգ «Թիթեռներով»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 278,
+        "stock": 80,
+        "category": "home",
+        "img": "media/products/BA100811.jpg",
+        "images": [
+            "media/products/BA100811.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+        ],
+        "bullets": [
+            "Նուրբ դիզայն թիթեռներով",
+            "Հեշտ լվացվող և դիմացկուն"
+        ],
+        "long_desc": "🦋 Թեթև ու նուրբ գորգ, որը ջերմություն կհաղորդի ձեր ինտերիերին։"
+    },
+    "BA100812": {
+        "title": "Գորգ «Վարդագույն փուշ»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 315,
+        "stock": 77,
+        "category": "home",
+        "img": "media/products/BA100812.jpg",
+        "images": [
+            "media/products/BA100812.jpg",
+            "media/products/shared/interior.jpg",
+        ],
+        "bullets": [
+            "Կոմպակտ չափս",
+            "Հարմար տեղադրելու համար"
+        ],
+        "long_desc": "🌺 Հիանալի տարբերակ՝ տունը կոկիկ ու հարմարավետ դարձնելու համար։"
+    },
+    "BA100813": {
+        "title": "Գորգ «Նուրբ ծաղկային»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 292,
+        "stock": 88,
+        "category": "home",
+        "img": "media/products/BA100813.jpg",
+        "images": [
+            "media/products/BA100813.jpg",
+            "media/products/shared/care.jpg",
+        ],
+        "bullets": [
+            "Դիմացկուն շերտավոր կառուցվածք",
+            "Հեշտ մաքրվող"
+        ],
+        "long_desc": "🌷 Կոկիկ գորգ, որը կդառնա ինտերիերի գեղեցիկ հավելում։"
+    },
+    "BA100814": {
+        "title": "Գորգ «Բաց մանուշակագույն»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 341,
+        "stock": 65,
+        "category": "home",
+        "img": "media/products/BA100814.jpg",
+        "images": [
+            "media/products/BA100814.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/layers.jpg",
+        ],
+        "bullets": [
+            "Սահադիմացկուն հիմք",
+            "Գեղեցիկ գույն"
+        ],
+        "long_desc": "💜 Թարմացրու տունը մանուշակագույն գեղեցկությամբ։"
+    },
+    "BA100815": {
+        "title": "Գորգ «Ծաղիկներ և թիթեռներ»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 289,
+        "stock": 73,
+        "category": "home",
+        "img": "media/products/BA100815.jpg",
+        "images": [
+            "media/products/BA100815.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/interior.jpg",
+        ],
+        "bullets": [
+            "Նուրբ դիզայն թիթեռներով",
+            "Կենցաղային հարմարավետություն"
+        ],
+        "long_desc": "🦋🌸 Թիթեռների ու ծաղիկների ներդաշնակություն։"
+    },
+    "BA100816": {
+        "title": "Գորգ «Թեթև սևապատ»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 300,
+        "stock": 92,
+        "category": "home",
+        "img": "media/products/BA100816.jpg",
+        "images": [
+            "media/products/BA100816.jpg",
+        ],
+        "bullets": [
+            "Սևավուն նուրբ երանգ",
+            "Հեշտ լվացվող"
+        ],
+        "long_desc": "🖤 Կոնտրաստային գորգ՝ ժամանակակից ինտերիերի համար։"
+    },
+    "BA100817": {
+        "title": "Գորգ «Նուրբ վարդագույն երանգ»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 276,
+        "stock": 85,
+        "category": "home",
+        "img": "media/products/BA100817.jpg",
+        "images": [
+            "media/products/BA100817.jpg",
+            "media/products/shared/interior.jpg",
+        ],
+        "bullets": [
+            "Գեղեցիկ վարդագույն երանգ",
+            "Տաք ու հարմարավետ"
+        ],
+        "long_desc": "💕 Սիրուն գորգ, որը ջերմություն կհաղորդի ձեր սենյակին։"
+    },
+    "BA100818": {
+        "title": "Գորգ «Նուրբ դիզայն»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 310,
+        "stock": 79,
+        "category": "home",
+        "img": "media/products/BA100818.jpg",
+        "images": [
+            "media/products/BA100818.jpg",
+            "media/products/shared/layers.jpg",
+        ],
+        "bullets": [
+            "Դիմացկուն և գեղեցիկ",
+            "Հեշտ մաքրվող"
+        ],
+        "long_desc": "🌸 Ձեր տան համար իդեալական նուրբ դիզայնի գորգ։"
+    },
+    "BA100819": {
+        "title": "Գորգ «Թիթեռներով դիզայն»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 298,
+        "stock": 88,
+        "category": "home",
+        "img": "media/products/BA100819.jpg",
+        "images": [
+            "media/products/BA100819.jpg",
+            "media/products/shared/interior.jpg",
+        ],
+        "bullets": [
+            "Հեշտ տեղադրվող",
+            "Հարմարավետություն ամենօրյա օգտագործման համար"
+        ],
+        "long_desc": "🦋 Ծաղկային դիզայն թիթեռներով՝ գեղեցիկ ինտերիերի համար։"
+    },
+    "BA100820": {
+        "title": "Գորգ «Գունավոր ծաղիկներ»",
+        "size": "40×60 սմ",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 350,
+        "stock": 70,
+        "category": "home",
+        "img": "media/products/BA100820.jpg",
+        "images": [
+            "media/products/BA100820.jpg",
+            "media/products/shared/care.jpg",
+        ],
+        "bullets": [
+            "Բազմագույն դիզայն",
+            "Հարմար է ցանկացած սենյակի"
+        ],
+        "long_desc": "🌼 Բազմագույն ծաղիկներով գորգ՝ ձեր տան ուրախ տրամադրության համար։"
+    },
+}
+
+# ------------------- PRODUCT SLIDER & CART BUTTONS -------------------
+def _product_images(code):
+    p = PRODUCTS.get(code, {})
+    raw = p.get("images") or [p.get("img")]
+    return [x for x in raw if x and os.path.exists(x)]
+
+def _slider_kb(code: str, idx: int, total: int):
+    left  = types.InlineKeyboardButton("◀️", callback_data=f"slider:{code}:{(idx-1)%total}")
+    right = types.InlineKeyboardButton("▶️", callback_data=f"slider:{code}:{(idx+1)%total}")
+
+    row_cart = [
         types.InlineKeyboardButton("➕ Ավելացնել զամբյուղ", callback_data=f"cart:add:{code}"),
-        types.InlineKeyboardButton("🧺 Դիտել զամբյուղ", callback_data="cart:show")
-    )
-    kb.row(
+        types.InlineKeyboardButton("🧺 Դիտել զամբյուղ", callback_data="cart:show"),
+    ]
+    row_nav = [
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home")
-    )
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+    ]
+
+    kb = types.InlineKeyboardMarkup()
+    kb.row(left, right)
+    kb.row(*row_cart)
+    kb.row(*row_nav)
     return kb
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("slider:"))
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("p:"))
+def show_product(c: types.CallbackQuery):
+    code = c.data.split(":",1)[1]
+    p = PRODUCTS.get(code, {})
+    if not p:
+        return bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
+
+    imgs = _product_images(code)
+    total = max(1, len(imgs))
+    idx = 0
+
+    discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
+    bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
+    caption = (
+        f"🌸 **{p.get('title','')}**\n"
+        f"✔️ Չափս՝ {p.get('size','')}\n"
+        f"{bullets}\n\n"
+        f"{p.get('long_desc','')}\n\n"
+        f"Հին գին — {p.get('old_price',0)}֏ (−{discount}%)\n"
+        f"Նոր գին — **{p.get('price',0)}֏**\n"
+        f"Վաճառված — {p.get('sold',0)} հատ\n"
+        f"Կոդ՝ `{code}`"
+    )
+
+    if imgs:
+        with open(imgs[idx], "rb") as ph:
+            bot.send_photo(
+                c.message.chat.id, ph, caption=caption, parse_mode="Markdown",
+                reply_markup=_slider_kb(code, idx, total)
+            )
+    else:
+        bot.send_message(c.message.chat.id, caption, parse_mode="Markdown", reply_markup=_slider_kb(code, idx, total))
+
+    bot.answer_callback_query(c.id)
+
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("slider:"))
 def product_slider(c: types.CallbackQuery):
     _, code, idx_str = c.data.split(":")
-    p = PRODUCTS.get(code,{})
-    imgs = [x for x in p.get("images",[]) if x and os.path.exists(x)]
+    idx = int(idx_str)
+    p = PRODUCTS.get(code, {})
+    imgs = _product_images(code)
     total = max(1, len(imgs))
-    idx = int(idx_str) % total
-    discount = int(round(100 - (p.get("price",0)*100/max(1,p.get("old_price",1)))))
-    bullets = "\n".join([f"✅ {b}" for b in p.get("bullets",[])])
+    idx = idx % total
+
+    discount = int(round(100 - (p["price"] * 100 / p["old_price"])))
+    bullets = "\n".join([f"✅ {b}" for b in (p.get("bullets") or [])])
     caption = (
-        f"🌸 <b>{p.get('title','')}</b>\n"
+        f"🌸 **{p.get('title','')}**\n"
         f"✔️ Չափս՝ {p.get('size','')}\n"
-        f"{bullets}\n\n{p.get('long_desc','')}\n\n"
+        f"{bullets}\n\n"
+        f"{p.get('long_desc','')}\n\n"
         f"Հին գին — {p.get('old_price',0)}֏ (−{discount}%)\n"
-        f"Նոր գին — <b>{p.get('price',0)}֏</b>\n"
+        f"Նոր գին — **{p.get('price',0)}֏**\n"
         f"Վաճառված — {p.get('sold',0)} հատ\n"
-        f"Կոդ՝ <code>{code}</code>"
+        f"Կոդ՝ `{code}`"
     )
-    try:
-        if imgs:
-            with open(imgs[idx], "rb") as ph:
-                media = InputMediaPhoto(ph, caption=caption, parse_mode="HTML")
-                bot.edit_message_media(media=media, chat_id=c.message.chat.id, message_id=c.message.message_id,
-                                       reply_markup=slider_kb(code, idx, total))
-        else:
-            bot.edit_message_caption(chat_id=c.message.chat.id, message_id=c.message.message_id,
-                                     caption=caption, parse_mode="HTML",
-                                     reply_markup=slider_kb(code, idx, total))
-    except:
-        # fallback send new
-        if imgs:
-            with open(imgs[idx],"rb") as ph:
-                bot.send_photo(c.message.chat.id, ph, caption=caption, parse_mode="HTML",
-                               reply_markup=slider_kb(code, idx, total))
-        else:
-            bot.send_message(c.message.chat.id, caption, parse_mode="HTML",
-                             reply_markup=slider_kb(code, idx, total))
-    bot.answer_callback_query(c.id)
 
-@bot.callback_query_handler(func=lambda c: c.data in ("back:home_list","go_home"))
-def back_buttons(c: types.CallbackQuery):
-    if c.data=="back:home_list":
-        # show home category again
-        msg = types.SimpleNamespace(chat=c.message.chat)  # fake object with chat
-        home_cat(msg)
+    if imgs:
+        with open(imgs[idx], "rb") as ph:
+            media = InputMediaPhoto(ph, caption=caption, parse_mode="Markdown")
+            bot.edit_message_media(media, chat_id=c.message.chat.id, message_id=c.message.message_id,
+                                   reply_markup=_slider_kb(code, idx, total))
     else:
-        bot.send_message(c.message.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
+        bot.edit_message_caption(caption, chat_id=c.message.chat.id,
+                                 message_id=c.message.message_id, parse_mode="Markdown",
+                                 reply_markup=_slider_kb(code, idx, total))
     bot.answer_callback_query(c.id)
 
-# ---------- CART & CHECKOUT ----------
-CART = defaultdict(dict)  # uid -> {code: qty}
-CHECKOUT = {}             # uid -> {"step":..., "order":...}
+# =========================
+#   END OF PART 2/3
+#   (Next: Part 3/3 — Cart handlers, Checkout, Orders, Admin panel)
+# =========================
+# =========================
+# StarLegenBot — main.py
+# PART 3/3  (paste below Part 2/3)
+# =========================
 
-def cart_text(uid:int)->str:
-    if not CART[uid]: return "🧺 Զամբյուղը դատարկ է"
-    total=0; lines=[]
-    for code,qty in CART[uid].items():
-        p=PRODUCTS[code]; sub=int(p["price"])*qty; total+=sub
-        lines.append(f"• {p['title']} × {qty} — {sub}֏")
-    lines.append(f"\nԸնդամենը՝ <b>{total}֏</b>")
-    return "\n".join(lines), total
+# ------------------- CART HANDLERS -------------------
+CART = defaultdict(dict)  # user_id -> {code: qty}
+
+def _cart_text(uid: int) -> str:
+    items = CART[uid]
+    if not items:
+        return "🛒 Զամբյուղը դատարկ է։"
+    lines = ["🛒 <b>Ձեր զամբյուղը</b>", ""]
+    total = 0
+    for code, qty in items.items():
+        p = PRODUCTS[code]
+        line = f"{p['title']} — {qty} հատ × {p['price']}֏"
+        lines.append(line)
+        total += p['price'] * qty
+    lines.append("")
+    lines.append(f"Ընդամենը՝ <b>{total}֏</b>")
+    return "\n".join(lines)
 
 @bot.message_handler(func=lambda m: m.text == BTN_CART)
-def open_cart_menu(m: types.Message):
-    show_cart(m.chat.id)
-
-def show_cart(chat_id: int):
-    # inline controls
-    uid = chat_id
+def open_cart_from_menu(m: types.Message):
+    uid = m.from_user.id
     kb = types.InlineKeyboardMarkup()
-    for code,qty in list(CART[uid].items())[:6]:
+    for code, qty in list(CART[uid].items())[:6]:
         title = PRODUCTS[code]["title"]
         kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
         kb.row(
             types.InlineKeyboardButton("➖", callback_data=f"cart:dec:{code}"),
             types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
-            types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}")
+            types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}"),
         )
     kb.row(
         types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
-        types.InlineKeyboardButton("🧾 Ավարտել պատվերը", callback_data="checkout:start")
+        types.InlineKeyboardButton("🧾 Ավարտել պատվերը", callback_data="checkout:start"),
     )
     kb.row(
         types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home")
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
     )
-    txt,_ = cart_text(uid)
-    bot.send_message(chat_id, txt, parse_mode="HTML", reply_markup=kb)
+    bot.send_message(m.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="HTML")
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("cart:") or c.data=="cart:show")
-def cart_cb(c: types.CallbackQuery):
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cart:"))
+def cart_callbacks(c: types.CallbackQuery):
     uid = c.from_user.id
-    if c.data=="cart:show":
-        show_cart(c.message.chat.id); return bot.answer_callback_query(c.id)
-    parts=c.data.split(":")
-    act = parts[1] if len(parts)>1 else None
-    code = parts[2] if len(parts)>2 else None
-    if act=="add" and code:
-        st = PRODUCTS[code].get("stock")
-        new_q = CART[uid].get(code, 0) + 1
-        if isinstance(st,int) and new_q>st:
-            return bot.answer_callback_query(c.id,"Պահեստում բավարար քանակ չկա")
-        CART[uid][code] = new_q
-        bot.answer_callback_query(c.id, "Ավելացվեց ✅")
-    elif act=="inc" and code:
-        st = PRODUCTS[code].get("stock")
-        new_q = CART[uid].get(code, 0) + 1
-        if isinstance(st,int) and new_q>st:
-            return bot.answer_callback_query(c.id,"Պահեստի սահման")
-        CART[uid][code] = new_q
-    elif act=="dec" and code:
-        q=CART[uid].get(code,0)
-        if q<=1: CART[uid].pop(code, None)
-        else: CART[uid][code]=q-1
-    elif act=="rm" and code:
+    parts = c.data.split(":")
+    action = parts[1]
+    code = parts[2] if len(parts) > 2 else None
+
+    if action == "add" and code:
+        CART[uid][code] = CART[uid].get(code, 0) + 1
+        bot.answer_callback_query(c.id, "Ավելացվեց զամբյուղում ✅")
+
+    elif action == "inc" and code:
+        CART[uid][code] = CART[uid].get(code, 0) + 1
+
+    elif action == "dec" and code:
+        q = CART[uid].get(code, 0)
+        CART[uid][code] = max(0, q - 1)
+        if CART[uid][code] == 0:
+            CART[uid].pop(code, None)
+
+    elif action == "rm" and code:
         CART[uid].pop(code, None)
-    elif act=="clear":
+
+    elif action == "clear":
         CART[uid].clear()
 
-    # refresh cart
-    kb = types.InlineKeyboardMarkup()
-    for code,qty in list(CART[uid].items())[:6]:
-        title = PRODUCTS[code]["title"]
-        kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
+    if action in ("show", "add", "inc", "dec", "rm", "clear"):
+        kb = types.InlineKeyboardMarkup()
+        for code, qty in list(CART[uid].items())[:6]:
+            title = PRODUCTS[code]["title"]
+            kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
+            kb.row(
+                types.InlineKeyboardButton("➖", callback_data=f"cart:dec:{code}"),
+                types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
+                types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}"),
+            )
         kb.row(
-            types.InlineKeyboardButton("➖", callback_data=f"cart:dec:{code}"),
-            types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
-            types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}")
+            types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
+            types.InlineKeyboardButton("🧾 Ավարտել պատվերը", callback_data="checkout:start"),
         )
-    kb.row(
-        types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
-        types.InlineKeyboardButton("🧾 Ավարտել պատվերը", callback_data="checkout:start")
-    )
-    kb.row(
-        types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
-        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home")
-    )
-    txt,_ = cart_text(uid)
-    bot.send_message(c.message.chat.id, txt, parse_mode="HTML", reply_markup=kb)
-    bot.answer_callback_query(c.id)
+        kb.row(
+            types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+            types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+        )
+        bot.edit_message_text(_cart_text(uid), chat_id=c.message.chat.id,
+                              message_id=c.message.message_id,
+                              reply_markup=kb, parse_mode="HTML")
+        bot.answer_callback_query(c.id)
 
-def order_id():
-    return "ORD-" + datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+# ------------------- CHECKOUT -------------------
+CHECKOUT_STATE = {}  # uid -> step
 
-COUNTRIES=["Հայաստան"]
-CITIES=["Երևան","Գյումրի","Վանաձոր","Աբովյան","Արտաշատ","Արմավիր","Հրազդան","Մասիս","Աշտարակ","Եղվարդ","Չարենցավան"]
-
-@bot.callback_query_handler(func=lambda c: c.data=="checkout:start")
+@bot.callback_query_handler(func=lambda c: c.data == "checkout:start")
 def checkout_start(c: types.CallbackQuery):
-    uid=c.from_user.id
+    uid = c.from_user.id
     if not CART[uid]:
-        bot.answer_callback_query(c.id,"Զամբյուղը դատարկ է"); return
-    total=sum(int(PRODUCTS[k]["price"])*q for k,q in CART[uid].items())
-    oid=order_id()
-    CHECKOUT[uid]={
-        "step":"name",
-        "order":{
-            "order_id": oid, "user_id": uid, "username": c.from_user.username,
-            "fullname":"", "phone":"", "country":"", "city":"", "address":"", "comment":"",
-            "items":[{"code":k,"qty":q} for k,q in CART[uid].items()],
-            "total": total, "status":"Draft",
-            "payment":{"method":"","amount":0,"tx":"","state":"Pending"},
-            "created_at": datetime.utcnow().isoformat()
+        return bot.answer_callback_query(c.id, "Զամբյուղը դատարկ է։")
+    CHECKOUT_STATE[uid] = {"step": "name", "data": {}}
+    bot.send_message(c.message.chat.id, "✍️ Մուտքագրեք ձեր անունը։")
+    bot.answer_callback_query(c.id)
+
+@bot.message_handler(func=lambda m: m.from_user.id in CHECKOUT_STATE)
+def checkout_steps(m: types.Message):
+    uid = m.from_user.id
+    state = CHECKOUT_STATE[uid]
+    step = state["step"]
+    if step == "name":
+        state["data"]["name"] = m.text.strip()
+        state["step"] = "phone"
+        return bot.send_message(m.chat.id, "📞 Մուտքագրեք ձեր հեռախոսահամարը։")
+
+    if step == "phone":
+        state["data"]["phone"] = m.text.strip()
+        state["step"] = "address"
+        return bot.send_message(m.chat.id, "🏠 Մուտքագրեք ձեր հասցեն։")
+
+    if step == "address":
+        state["data"]["address"] = m.text.strip()
+        # save order
+        order = {
+            "user": uid,
+            "items": CART[uid],
+            "info": state["data"],
+            "created": datetime.utcnow().isoformat()+"Z",
         }
-    }
-    bot.answer_callback_query(c.id)
-    bot.send_message(c.message.chat.id, f"🧾 Պատվեր {oid}\nԳրեք Ձեր <b>Անուն Ազգանուն</b>։", parse_mode="HTML")
+        ORDERS.append(order)
+        persist_orders()
+        # send to admin
+        bot.send_message(ADMIN_ID, f"📦 Նոր պատվեր {uid}\n{json.dumps(order, ensure_ascii=False, indent=2)}")
+        # clear
+        CART[uid].clear()
+        del CHECKOUT_STATE[uid]
+        return bot.send_message(m.chat.id, "✅ Պատվերը ուղարկվեց ադմինին։ Շնորհակալություն։")
 
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="name")
-def ch_name(m: types.Message):
-    CHECKOUT[m.from_user.id]["order"]["fullname"]=(m.text or "").strip()
-    CHECKOUT[m.from_user.id]["step"]="phone"
-    bot.send_message(m.chat.id,"📞 Գրեք Ձեր <b>հեռախոսահամարը</b>։", parse_mode="HTML")
-
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="phone")
-def ch_phone(m: types.Message):
-    t="".join(ch for ch in (m.text or "") if ch.isdigit())
-    if len(t)<8: return bot.send_message(m.chat.id,"❗ Թվերի քանակը քիչ է, փորձեք կրկին")
-    CHECKOUT[m.from_user.id]["order"]["phone"]=t
-    CHECKOUT[m.from_user.id]["step"]="country"
-    kb=types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    for c in COUNTRIES: kb.add(c)
-    bot.send_message(m.chat.id,"🌍 Ընտրեք <b>երկիր</b>:", parse_mode="HTML", reply_markup=kb)
-
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="country")
-def ch_country(m: types.Message):
-    CHECKOUT[m.from_user.id]["order"]["country"]=m.text.strip()
-    CHECKOUT[m.from_user.id]["step"]="city"
-    kb=types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    for c in CITIES: kb.add(c)
-    bot.send_message(m.chat.id,"🏙 Ընտրեք <b>քաղաք</b>:", parse_mode="HTML", reply_markup=kb)
-
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="city")
-def ch_city(m: types.Message):
-    CHECKOUT[m.from_user.id]["order"]["city"]=m.text.strip()
-    CHECKOUT[m.from_user.id]["step"]="address"
-    bot.send_message(m.chat.id,"📦 Գրեք <b>հասցե/մասնաճյուղ</b>:", parse_mode="HTML")
-
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="address")
-def ch_addr(m: types.Message):
-    CHECKOUT[m.from_user.id]["order"]["address"]=m.text.strip()
-    CHECKOUT[m.from_user.id]["step"]="comment"
-    bot.send_message(m.chat.id,"✍️ Մեկնաբանություն (ըստ ցանկության)՝ գրեք կամ «—»")
-
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="comment")
-def ch_comment(m: types.Message):
-    CHECKOUT[m.from_user.id]["order"]["comment"] = (m.text.strip() if m.text.strip()!="—" else "")
-    CHECKOUT[m.from_user.id]["step"]="paymethod"
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("Քարտ", callback_data="paym:CARD"),
-           types.InlineKeyboardButton("TelCell", callback_data="paym:TELCELL"))
-    kb.add(types.InlineKeyboardButton("Idram", callback_data="paym:IDRAM"),
-           types.InlineKeyboardButton("Fastshift", callback_data="paym:FASTSHIFT"))
-    bot.send_message(m.chat.id,"💳 Ընտրեք <b>վճարման եղանակը</b>:", parse_mode="HTML", reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("paym:"))
-def choose_method(c: types.CallbackQuery):
-    method=c.data.split(":")[1]
-    s=CHECKOUT.get(c.from_user.id)
-    if not s: return bot.answer_callback_query(c.id,"Սկսեք նորից")
-    s["order"]["payment"]["method"]=method
-    s["step"]="payamount"
-    details = {
-        "CARD":"💳 Քարտ՝ 5355 **** **** 1234\nՍտացող՝ Your Name",
-        "TELCELL":"🏧 TelCell՝ Account: 123456",
-        "IDRAM":"📱 Idram ID: 123456789",
-        "FASTSHIFT":"💠 Fastshift Wallet: fast_shift_acc",
-    }.get(method,"Մանրամասները ճշտեք ադմինից")
-    total = s["order"]["total"]
-    bot.answer_callback_query(c.id)
-    bot.send_message(c.message.chat.id,
-        f"{details}\n\nՍտանդարտ գումարը՝ <b>{total}֏</b>\n"
-        f"✅ Կարող եք ուղարկել ավելին, տարբերությունը կհաշվվի որպես Wallet.\n\n"
-        f"Գրեք ուղարկած գումարը՝ թվերով (֏):",
-        parse_mode="HTML")
-
-@bot.message_handler(func=lambda m: CHECKOUT.get(m.from_user.id,{}).get("step")=="payamount")
-def ch_amount(m: types.Message):
-    try:
-        amount = int("".join(ch for ch in (m.text or "") if ch.isdigit()))
-    except:
-        return bot.send_message(m.chat.id,"Մուտքագրեք գումարը՝ օրինակ 1300")
-    s=CHECKOUT[m.from_user.id]
-    s["order"]["payment"]["amount"]=amount
-    s["step"]="confirm"
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("✅ Հաստատել պատվերը", callback_data="order:confirm"))
-    kb.add(types.InlineKeyboardButton("❌ Չեղարկել", callback_data="order:cancel"))
-    t = s["order"]
-    items = "\n".join([f"• {PRODUCTS[i['code']]['title']} × {i['qty']}" for i in t["items"]])
-    bot.send_message(m.chat.id,
-        f"🧾 <b>Պատվերի ամփոփում</b>\n\n{items}\n\n"
-        f"Ընդամենը՝ <b>{t['total']}֏</b>\n"
-        f"Վճարում՝ {t['payment']['method']} | Գումար՝ {t['payment']['amount']}֏",
-        parse_mode="HTML", reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("order:"))
-def order_confirm(c: types.CallbackQuery):
-    s=CHECKOUT.get(c.from_user.id)
-    if not s: return bot.answer_callback_query(c.id,"Սկսեք նորից")
-    act=c.data.split(":")[1]
-    if act=="cancel":
-        CHECKOUT.pop(c.from_user.id, None)
-        bot.answer_callback_query(c.id,"Չեղարկվեց")
-        return
-    # confirm
-    order=s["order"]
-    order["status"]="Awaiting Admin Confirm"
-    ORDERS.append(order); save_json(ORDERS_FILE, ORDERS)
-    # admin notify
-    items = "\n".join([f"• {PRODUCTS[i['code']]['title']} × {i['qty']}" for i in order["items"]])
-    admin_txt=(f"🆕 Նոր պատվեր {order['order_id']}\n"
-               f"👤 {order['fullname']} | 📞 {order['phone']}\n"
-               f"📍 {order['country']}, {order['city']} | {order['address']}\n"
-               f"🛒\n{items}\n"
-               f"💰 Ընդամենը՝ {order['total']}֏ | Վճարել է՝ {order['payment']['amount']}֏\n"
-               f"💳 {order['payment']['method']}\n"
-               f"📝 {order['comment'] or '—'}\n"
-               f"user @{order['username'] or '—'} (id {order['user_id']})")
-    bot.send_message(ADMIN_ID, admin_txt)
-    # user
-    CART[c.from_user.id].clear()
-    CHECKOUT.pop(c.from_user.id, None)
-    bot.answer_callback_query(c.id,"Գրանցվեց")
-    bot.send_message(c.message.chat.id,"✅ Պատվերը գրանցվեց։ Ադմինը շուտով կհաստատի։")
-
-# ---------- SIMPLE PROFILE / FEEDBACK ----------
+# ------------------- PROFILE (Իմ էջը) -------------------
 @bot.message_handler(func=lambda m: m.text == BTN_PROFILE)
-def my_page(m: types.Message):
-    bot.send_message(m.chat.id, "👤 Իմ էջը\n(շուտով՝ պատվերների պատմություն, վաուչերներ, և այլն)")
+def my_profile(m: types.Message):
+    uid = m.from_user.id
+    orders = [o for o in ORDERS if o["user"] == uid]
+    lines = ["🧍 <b>Իմ էջը</b>", ""]
+    if orders:
+        lines.append("📦 Պատվերների քանակ՝ " + str(len(orders)))
+        for o in orders[-3:]:
+            lines.append(f"- {o['created']} ({len(o['items'])} ապրանք)")
+    else:
+        lines.append("Դեռ պատվերներ չունեք։")
+    bot.send_message(m.chat.id, "\n".join(lines), parse_mode="HTML")
 
+# ------------------- FEEDBACK -------------------
 @bot.message_handler(func=lambda m: m.text == BTN_FEEDBACK)
 def feedback(m: types.Message):
-    bot.send_message(m.chat.id, "✉️ Կապ՝ @your_contact կամ գրեք այստեղ՝ մենք կպատասխանենք։")
+    bot.send_message(m.chat.id, "✍️ Գրեք ձեր հաղորդագրությունը, այն կուղարկվի ադմինին։")
+    bot.register_next_step_handler(m, feedback_step)
 
-# ---------- EXCHANGE PLACEHOLDER ----------
-@bot.message_handler(func=lambda m: m.text == BTN_EXCHANGE)
-def exchange_menu(m: types.Message):
-    bot.send_message(m.chat.id, "💱 Փոխարկումներ — PI➝USDT, FTN➝AMD, Alipay (կոդը պատրաստ է ավելացնելու)")
+def feedback_step(m: types.Message):
+    bot.send_message(ADMIN_ID, f"💬 Feedback {m.from_user.id}: {m.text}")
+    bot.send_message(m.chat.id, "✅ Ձեր հաղորդագրությունը ուղարկվեց ադմինին։")
 
-# ---------- SEARCH PLACEHOLDER ----------
+# ------------------- SEARCH -------------------
 @bot.message_handler(func=lambda m: m.text == BTN_SEARCH)
-def search(m: types.Message):
-    bot.send_message(m.chat.id, "🔍 Գրեք ապրանքի անունը/կոդը՝ (շուտով smart որոնում)")
+def product_search(m: types.Message):
+    bot.send_message(m.chat.id, "Որոնման համար մուտքագրեք ապրանքի անվանում կամ կոդ։")
+    bot.register_next_step_handler(m, do_search)
 
-# ---------- MAIN MENU BTN ----------
-@bot.message_handler(func=lambda m: m.text == BTN_MAIN)
-def go_main(m: types.Message):
-    bot.send_message(m.chat.id, "Գլխավոր մենյու ✨", reply_markup=build_main_menu())
+def do_search(m: types.Message):
+    term = m.text.strip().lower()
+    found = []
+    for code, p in PRODUCTS.items():
+        if term in code.lower() or term in p["title"].lower():
+            found.append(code)
+    if not found:
+        return bot.send_message(m.chat.id, "Չգտնվեց։")
+    for code in found[:5]:
+        bot.send_message(m.chat.id, f"Գտնվեց՝ {PRODUCTS[code]['title']}", reply_markup=types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton("👀 Դիտել", callback_data=f"p:{code}")
+        ))
 
-# ---------- ADMIN PANEL (թեթև) ----------
-def is_admin(uid:int)->bool: return int(uid)==int(ADMIN_ID)
-
+# ------------------- ADMIN PANEL -------------------
 @bot.message_handler(commands=["admin"])
-def open_admin(m: types.Message):
-    if not is_admin(m.from_user.id):
-        return bot.reply_to(m,"❌ Դուք ադմին չեք")
-    kb=types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("📊 Ping", callback_data="adm:ping"))
-    kb.add(types.InlineKeyboardButton("👥 Users", callback_data="adm:users"))
-    kb.add(types.InlineKeyboardButton("🧾 Orders", callback_data="adm:orders"))
-    bot.send_message(m.chat.id,"🛠 Ադմին պանել", reply_markup=kb)
+def admin_panel(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("📊 Վիճակագրություն", "👥 Վերջին օգտատերեր")
+    kb.add("🧾 Վերջին հաղորդագրություններ", "⬇️ Ներբեռնել logs")
+    kb.add("📣 Broadcast", "🔎 Փնտրել օգտատիրոջը")
+    kb.add("↩️ Փակել")
+    bot.send_message(m.chat.id, "🔐 Ադմին պանել", reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("adm:"))
-def admin_cb(c: types.CallbackQuery):
-    if not is_admin(c.from_user.id):
-        return bot.answer_callback_query(c.id,"Ոչ ադմին")
-    act=c.data.split(":")[1]
-    if act=="ping":
-        bot.answer_callback_query(c.id,"OK")
-        bot.edit_message_text(f"🟢 Pong\nUTC: {datetime.utcnow().isoformat()}Z", c.message.chat.id, c.message.message_id)
-    elif act=="users":
-        lst=list(USERS.keys())[:20]
-        bot.answer_callback_query(c.id)
-        bot.edit_message_text("👥 Վերջին users (ID-ներ)\n"+"\n".join(lst or ["—"]),
-                              c.message.chat.id, c.message.message_id)
-    elif act=="orders":
-        bot.answer_callback_query(c.id)
-        bot.edit_message_text(f"🧾 Պատվերների քանակ՝ {len(ORDERS)}", c.message.chat.id, c.message.message_id)
+@bot.message_handler(func=lambda m: m.text == "📊 Վիճակագրություն" and m.from_user.id == ADMIN_ID)
+def admin_stats(m: types.Message):
+    bot.send_message(m.chat.id, f"Օգտատերեր: {len(USERS)}\nՊատվերներ: {len(ORDERS)}")
 
-# ---------- RUN ----------
+@bot.message_handler(func=lambda m: m.text == "👥 Վերջին օգտատերեր" and m.from_user.id == ADMIN_ID)
+def admin_users(m: types.Message):
+    lines = []
+    for uid in list(USERS.keys())[-10:]:
+        lines.append(uid)
+    bot.send_message(m.chat.id, "\n".join(lines))
+
+@bot.message_handler(func=lambda m: m.text == "🧾 Վերջին հաղորդագրություններ" and m.from_user.id == ADMIN_ID)
+def admin_msgs(m: types.Message):
+    try:
+        with open("messages.log","r",encoding="utf-8") as f:
+            lines = f.readlines()[-20:]
+        bot.send_message(m.chat.id, "".join(lines))
+    except Exception as e:
+        bot.send_message(m.chat.id, str(e))
+
+@bot.message_handler(func=lambda m: m.text == "⬇️ Ներբեռնել logs" and m.from_user.id == ADMIN_ID)
+def admin_logs(m: types.Message):
+    try:
+        with open("messages.log","rb") as f:
+            bot.send_document(m.chat.id, f)
+    except: pass
+    try:
+        with open("errors.log","rb") as f:
+            bot.send_document(m.chat.id, f)
+    except: pass
+
+@bot.message_handler(func=lambda m: m.text == "📣 Broadcast" and m.from_user.id == ADMIN_ID)
+def admin_broadcast(m: types.Message):
+    bot.send_message(m.chat.id, "✍️ Գրեք հաղորդագրությունը բոլորին ուղարկելու համար։")
+    bot.register_next_step_handler(m, do_broadcast)
+
+def do_broadcast(m: types.Message):
+    if m.from_user.id != ADMIN_ID:
+        return
+    for uid in USERS.keys():
+        try:
+            bot.send_message(int(uid), m.text)
+        except: pass
+    bot.send_message(m.chat.id, "✅ Ուղարկվեց։")
+
+# ------------------- MAIN LOOP -------------------
 if __name__ == "__main__":
-    print("dotenv path:", find_dotenv())
-    print("BOT_TOKEN len:", len(BOT_TOKEN))
-    print("Bot is running...")
+    try:
+        bot.remove_webhook()
+    except: pass
+    print("🤖 Bot is running...")
     bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+
