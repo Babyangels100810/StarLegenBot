@@ -750,7 +750,7 @@ def render_good_thoughts(page: int = 1, per_page: int = 1):
     kb.add(types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="gt:home"))
     return text, kb
 
-@bot.message_handler(func=lambda m: m.text == BTN_GOOD_THOUGHTS)
+@bot.message_handler(func=lambda m: m.text == BTN_THOUGHTS)
 def show_good_thoughts(m: types.Message):
     text, kb = render_good_thoughts(page=1)
     bot.send_message(m.chat.id, text, reply_markup=kb, parse_mode="HTML")
