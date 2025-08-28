@@ -8,7 +8,202 @@ from collections import defaultdict
 import os, json, time, threading, traceback, datetime
 import re
 import requests
-CART = {}
+# ===== CHECKOUT CORE (AM + RU) =====
+from collections import defaultdict
+import re
+from datetime import datetime
+
+# ---------- STORAGE ----------
+CART = defaultdict(dict)         # {user_id: {code: qty}}
+CHECKOUT_STATE = {}              # per-user checkout wizard state
+ORDERS = []                      # demo storage
+
+# ---------- BUTTONS ----------
+BTN_BACK_MAIN = "⬅ Վերադառնալ գլխավոր մենյու"
+
+# ---------- MAIN MENU ----------
+def main_menu_kb():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("🛍 Խանութ", "🛒 Զամբյուղ")
+    kb.add("💱 Փոխարկումներ", "💬 Կապ մեզ հետ")
+    kb.add("🔍 Որոնել ապրանք", "🧍 Իմ էջը")
+    return kb
+
+def show_main_menu(chat_id, text="Գլխավոր մենյու ✨"):
+    bot.send_message(chat_id, text, reply_markup=main_menu_kb())
+
+# ---------- VALIDATION ----------
+NAME_RE = re.compile(r"^[A-Za-z\u0531-\u0556\u0561-\u0587ЁёЪъЫыЭэЙй\s'\-\.]{3,60}$")
+# Armenia: +374xxxxxxxx կամ 0xxxxxxxx  |  Russia: +7xxxxxxxxxx կամ 8xxxxxxxxxx
+PHONE_RE = re.compile(r"^((\+374|0)\d{8}|(\+7|8)\d{10})$")
+
+# ---------- HELPERS ----------
+def _order_id():
+    import time
+    return f"BA{int(time.time()) % 1_000_000}"
+
+def _cart_total(uid: int) -> int:
+    return sum(PRODUCTS[c]["price"] * q for c, q in CART[uid].items())
+
+def _check_stock(uid: int):
+    for code, qty in CART[uid].items():
+        st = PRODUCTS[code].get("stock")
+        if isinstance(st, int) and qty > st:
+            return False, code, st
+    return True, None, None
+
+# ---------- COUNTRY / CITY LISTS ----------
+COUNTRIES = ["Հայաստան", "Ռուսաստան"]
+
+CITIES_BY_COUNTRY = {
+    "Հայաստան": [
+        "Երևան", "Գյումրի", "Վանաձոր", "Աբովյան", "Արտաշատ", "Արմավիր",
+        "Հրազդան", "Մասիս", "Աշտարակ", "Եղվարդ", "Չարենցավան"
+    ],
+    "Ռուսաստան": [
+        "Москва", "Санкт-Петербург", "Краснодар", "Ростов-на-Дону",
+        "Екатеринбург", "Казань", "Новосибирск", "Сочи"
+    ]
+}
+
+def _cities_for(country: str):
+    return CITIES_BY_COUNTRY.get(country, CITIES_BY_COUNTRY["Հայաստան"])
+
+# ---------- CHECKOUT FLOW ----------
+@bot.message_handler(content_types=['text', 'contact'], func=lambda m: m.from_user.id in CHECKOUT_STATE)
+def checkout_flow(m: types.Message):
+    uid = m.from_user.id
+    st = CHECKOUT_STATE.get(uid)
+    if not st:
+        return
+    step  = st["step"]
+    order = st["order"]
+
+    # universal BACK
+    if m.text == BTN_BACK_MAIN:
+        CHECKOUT_STATE.pop(uid, None)
+        show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։")
+        return
+
+    # STEP: name
+    if step == "name":
+        txt = (m.text or "").strip()
+        if not NAME_RE.match(txt):
+            bot.send_message(m.chat.id, "❗ Անուն/Ազգանուն՝ միայն տառերով (3–60 նշան). Կրկին փորձեք։")
+            return
+        order["fullname"] = txt
+        st["step"] = "phone"
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        kb.add(types.KeyboardButton("📱 Ուղարկել կոնտակտ", request_contact=True))
+        kb.add(BTN_BACK_MAIN)
+        bot.send_message(
+            m.chat.id,
+            "📞 Գրեք հեռախոսահամարը (+374xxxxxxxx կամ 0xxxxxxxx | +7xxxxxxxxxx կամ 8xxxxxxxxxx) "
+            "կամ սեղմեք «📱 Ուղարկել կոնտակտ».",
+            reply_markup=kb
+        )
+        return
+
+    # STEP: phone
+    if step == "phone":
+        phone = None
+        if m.contact and m.contact.phone_number:
+            phone = m.contact.phone_number.replace(" ", "")
+            if not phone.startswith("+"):
+                phone = "+" + phone
+        else:
+            phone = (m.text or "").replace(" ", "")
+
+        if not PHONE_RE.match(phone):
+            bot.send_message(
+                m.chat.id,
+                "❗ Սխալ հեռախոսահամար.\n"
+                "Օրինակներ՝ +374441112233 կամ 0441112233 (Հայաստան), "
+                "+79001234567 կամ 89001234567 (Ռուսաստան)։"
+            )
+            return
+
+        order["phone"] = phone
+        st["step"] = "country"
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        for c in COUNTRIES:
+            kb.add(c)
+        kb.add(BTN_BACK_MAIN)
+        bot.send_message(m.chat.id, "🌍 Ընտրեք երկիրը՝", reply_markup=kb)
+        return
+
+    # STEP: country
+    if step == "country":
+        if m.text not in COUNTRIES:
+            bot.send_message(m.chat.id, "Խնդրում ենք ընտրել առաջարկվող կոճակներից։")
+            return
+        order["country"] = m.text
+        st["step"] = "city"
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        cities = _cities_for(order["country"])
+        # 2 սյունակով
+        for i in range(0, len(cities), 2):
+            row = [types.KeyboardButton(x) for x in cities[i:i+2]]
+            kb.row(*row)
+        kb.add(BTN_BACK_MAIN)
+        bot.send_message(m.chat.id, "🏙️ Ընտրեք քաղաքը՝", reply_markup=kb)
+        return
+
+    # STEP: city
+    if step == "city":
+        cities = _cities_for(order["country"])
+        if m.text not in cities:
+            bot.send_message(m.chat.id, "Խնդրում ենք ընտրել առաջարկվող քաղաքներից։")
+            return
+        order["city"] = m.text
+        st["step"] = "address"
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        kb.add(BTN_BACK_MAIN)
+        bot.send_message(m.chat.id, "🏡 Գրեք հասցեն (փողոց, տուն, մուտք, բնակարան)․", reply_markup=kb)
+        return
+
+    # STEP: address
+    if step == "address":
+        txt = (m.text or "").strip()
+        if len(txt) < 5:
+            bot.send_message(m.chat.id, "❗ Գրեք ավելի մանր հասցե (առնվազն 5 նշան)։")
+            return
+        order["address"] = txt
+        st["step"] = "comment"
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        kb.add("—")
+        kb.add(BTN_BACK_MAIN)
+        bot.send_message(m.chat.id, "📝 Լրացուցիչ մեկնաբանություն (կամ գրեք «—», եթե չկա)։", reply_markup=kb)
+        return
+
+    # STEP: comment (final)
+    if step == "comment":
+        order["comment"] = "" if (m.text or "").strip() in {"", "—", "-"} else (m.text or "").strip()
+        order["status"] = "Pending"
+        order["created_at"] = datetime.utcnow().isoformat()
+
+        # պահպանում ենք պատվերը (demo)
+        ORDERS.append(order)
+
+        # մաքրում ենք state-ը և զամբյուղը
+        CART[uid].clear()
+        CHECKOUT_STATE.pop(uid, None)
+
+        bot.send_message(
+            m.chat.id,
+            f"✅ Պատվերը գրանցվեց։ Մեր օպերատորը շուտով կկապվի։\nՊատվերի ID: {order['order_id']}",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        # Ավտոմատ բացում ենք ԳԼԽԱՎՈՐ ՄԵՆՅՈւ
+        show_main_menu(m.chat.id)
+        return
+
+# ---------- BACK BUTTON (Գլխավոր մենյու) ----------
+@bot.message_handler(func=lambda m: m.text == BTN_BACK_MAIN)
+def back_to_main(m: types.Message):
+    CHECKOUT_STATE.pop(m.from_user.id, None)
+    show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։")
+
 
 # դեպի Telegram API ճիշտ URL
 apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
@@ -2164,8 +2359,6 @@ def show_cart_cmd(m: types.Message):
     bot.send_message(m.chat.id, _cart_text(uid), reply_markup=_cart_keyboard(uid), parse_mode="Markdown")
 
 # ───────── CHECKOUT ─────────
-COUNTRIES = ["Հայաստան"]
-CITIES = ["Երևան","Գյுமրի","Վանաձոր","Աբովյան","Արտաշատ","Արմավիր","Հրազդան","Մասիս","Աշտարակ","Եղվարդ","Չարենցավան"]
 
 @bot.callback_query_handler(func=lambda c: c.data == "checkout:start")
 def checkout_start(c: types.CallbackQuery):
