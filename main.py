@@ -88,12 +88,17 @@ def welcome_text(customer_no: int) -> str:
         "🐰🌸 <b>Բարի գալուստ StarLegen</b> 🛍✨\n\n"
         "💖 Շնորհակալ ենք, որ միացել եք մեր սիրելի համայնքին ❤️\n"
         f"Դուք այժմ մեր սիրելի հաճախորդն եք №{customer_no} ✨\n\n"
-        "Մեր խանութում կարող եք գտնել ամեն օր օգտակար ապրանքների գեղեցիկ և մատչելի առաջարկներ։\n\n"
+        "Մեր խանութում կարող եք գտնել ամեն օր օգտակար ապրանքների գեղեցիկ լացակազմ գները։\n\n"
+        "🎁 <b>Ավելի շատի՝</b> առցանց գնման դեպքում կարող եք օգտվել մինչև 10% զեղչ կուպոնների համակարգից։\n\n"
+        "📦 Ի՞նչ կգտնեք այստեղ․\n"
+        "• Ժամանակակից և օգտակար ապրանքներ ամեն օրվա համար\n"
+        "• Լավագույն և տարբերակված Telegram առաջարկություններ\n"
+        "• Համապատասխան և արագ առաքում 🚚\n\n"
         "📊 <b>Փոխարժեքի ծառայություններ</b>\n"
-        "• PI ➜ USDT (շուկայական կուրս +20% սպասարկում)\n"
-        "• FTN ➜ AMD (միայն 10% սպասարկում)\n"
+        "• PI ➔ USDT (շուկայական կուրս, +20% սպասարկում)\n"
+        "• FTN ➔ AMD (միայն 10% սպասարկում)\n"
         "• Alipay լիցքավորում (1 CNY = 58֏)\n\n"
-        "✨ Ընտրեք բաժինները ներքևում 👇"
+        "✨ Ավելին արդեն պատրաստված ու օգտվելու համար ընտրեք ներքևի բաժինները 👇"
     )
 
 # պահենք պարզ՝ counter-ը հիշվող ֆայլով
@@ -180,6 +185,198 @@ def stub_search(m: types.Message):
 @bot.message_handler(func=lambda m: m.text == BTN_INVITE)
 def stub_invite(m: types.Message):
     bot.send_message(m.chat.id, "👥 Հրավերի հղումը և referral-ը — կավելացնենք հաջորդ մասում։")
+# ========== MAIN.PY — PART 2/8 (SHOP + 12 PRODUCTS) ==========
+# Նկարները अपेում ենք media/products/ մեջ.
+# Գորգերի հիմնական նկարները՝ BA100810.jpg ... BA100820.jpg
+# Այլ ընդհանուր նկարներ (եթե ունես) կարող ես դնել media/products/shared/ care.jpg,layers.jpg,absorb.jpg,universal.jpg,interior.jpg,advantages.jpg
+# Ավտոմաքրիչի նկարը՝ media/products/car_cleaner.jpg (կամ քո ֆայլը)
+
+def _p(*parts):
+    import os
+    return os.path.join(*parts)
+
+PRODUCTS = {
+    # 11 ԳՈՐԳ — BA100810..BA100820
+    "BA100810": {
+        "title": "🌸 Գորգ – BA100810 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 25,
+        "photos": [
+            _p("media","products","BA100810.jpg"),
+            _p("media","products","shared","care.jpg"),
+            _p("media","products","shared","layers.jpg"),
+            _p("media","products","shared","absorb.jpg"),
+            _p("media","products","shared","interior.jpg"),
+        ],
+        "desc": "✔️ Չսահող հիմք • ✔️ Արագ չորանում է • ✔️ Հեշտ լվացվող"
+    },
+    "BA100811": {
+        "title": "🌸 Գորգ – BA100811 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 24,
+        "photos": [
+            _p("media","products","BA100811.jpg"),
+            _p("media","products","shared","absorb.jpg"),
+            _p("media","products","shared","advantages.jpg"),
+        ],
+        "desc": "✔️ Խիտ վերին շերտ • ✔️ Գույնը չի խամրում • ✔️ Կոկիկ եզրեր"
+    },
+    "BA100812": {
+        "title": "🌸 Գորգ – BA100812 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 22,
+        "photos": [
+            _p("media","products","BA100812.jpg"),
+            _p("media","products","shared","layers.jpg"),
+            _p("media","products","shared","universal.jpg"),
+        ],
+        "desc": "✔️ Տան ցանկացած հատվածի համար • ✔️ Դիմացկուն"
+    },
+    "BA100813": {
+        "title": "🌸 Գորգ – BA100813 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 26,
+        "photos": [
+            _p("media","products","BA100813.jpg"),
+            _p("media","products","shared","interior.jpg"),
+            _p("media","products","shared","advantages.jpg"),
+        ],
+        "desc": "✔️ Հարմար ինտենսիվ օգտագործման համար • ✔️ Չի սահում"
+    },
+    "BA100814": {
+        "title": "🌸 Գորգ – BA100814 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 20,
+        "photos": [
+            _p("media","products","BA100814.jpg"),
+            _p("media","products","shared","care.jpg"),
+            _p("media","products","shared","advantages.jpg"),
+        ],
+        "desc": "✔️ Փափուկ, հաճելի հպում • ✔️ Կոկիկ եզրեր"
+    },
+    "BA100815": {
+        "title": "🌸 Գորգ – BA100815 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 25,
+        "photos": [
+            _p("media","products","BA100815.jpg"),
+            _p("media","products","shared","absorb.jpg"),
+            _p("media","products","shared","interior.jpg"),
+        ],
+        "desc": "✔️ Խիտ շերտ • ✔️ Չի ձևախեղվում լվացումից հետո"
+    },
+    "BA100816": {
+        "title": "🌸 Գորգ – BA100816 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 18,
+        "photos": [
+            _p("media","products","BA100816.jpg"),
+            _p("media","products","shared","layers.jpg"),
+            _p("media","products","shared","advantages.jpg"),
+        ],
+        "desc": "✔️ Էլեգանտ դիզայն • ✔️ Դիմացկուն հիմք"
+    },
+    "BA100817": {
+        "title": "🌸 Գորգ – BA100817 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 23,
+        "photos": [
+            _p("media","products","BA100817.jpg"),
+            _p("media","products","shared","universal.jpg"),
+            _p("media","products","shared","care.jpg"),
+        ],
+        "desc": "✔️ Խոհանոց/մուտք • ✔️ Արագ չորացում"
+    },
+    "BA100818": {
+        "title": "🌸 Գորգ – BA100818 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 21,
+        "photos": [
+            _p("media","products","BA100818.jpg"),
+            _p("media","products","shared","advantages.jpg"),
+        ],
+        "desc": "✔️ Թեթև, կոմպակտ • ✔️ Հեշտ տեղադրվող"
+    },
+    "BA100819": {
+        "title": "🌸 Գորգ – BA100819 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 19,
+        "photos": [
+            _p("media","products","BA100819.jpg"),
+            _p("media","products","shared","interior.jpg"),
+            _p("media","products","shared","absorb.jpg"),
+        ],
+        "desc": "✔️ Կոկիկ ու համադրվող • ✔️ Հակասահող հիմք"
+    },
+    "BA100820": {
+        "title": "🌸 Գորգ – BA100820 (40×60սմ)",
+        "price": 1690, "old_price": 2560, "stock": 20,
+        "photos": [
+            _p("media","products","BA100820.jpg"),
+            _p("media","products","shared","universal.jpg"),
+            _p("media","products","shared","advantages.jpg"),
+        ],
+        "desc": "✔️ Թարմ դիզայն • ✔️ Հեշտ մաքրվող"
+    },
+
+    # 1 ԱՎՏՈՄԵՔԵՆԱՅԻ ՄԱՔՐԻՉ
+    "AUTO001": {
+        "title": "🚘 Յուղային ֆիլմ մաքրիչ (կարմիր, սպունգով)",
+        "price": 3580, "old_price": 6480, "stock": 25,
+        "photos": [
+            _p("media","products","car_cleaner.jpg"),  # ← դիր քո ֆայլի անունը
+            _p("media","products","promo_auto1.jpg"),  # եթե չկա՝ կանցնի առանց դրա
+        ],
+        "desc": "✔️ Հեռացնում է յուղային կեղտը ապակուց • ✔️ Բարձր թափանցիկություն • ✔️ Հեշտ կիրառություն"
+    },
+}
+
+# ========== INLINE KEYBOARDS ==========
+def product_inline_kb(code: str):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("➕ Ավելացնել զամբյուղ", callback_data=f"cart:add:{code}"))
+    kb.add(
+        types.InlineKeyboardButton("🛒 Դիտել զամբյուղ", callback_data="cart:show"),
+        types.InlineKeyboardButton("🏠 Գլխավոր", callback_data="go_home")
+    )
+    return kb
+
+# ========== SHOP LIST + PRODUCT VIEW ==========
+@bot.message_handler(func=lambda m: m.text == "🛍 Խանութ")
+def open_shop(m: types.Message):
+    kb = types.InlineKeyboardMarkup()
+    # Ցուցադրում ենք բոլոր 12 ապրանքները inline սեղմվող կոճակներով
+    for code, prod in PRODUCTS.items():
+        kb.add(types.InlineKeyboardButton(prod["title"], callback_data=f"prod:{code}"))
+    bot.send_message(m.chat.id, "🛍 Խանութ — Ընտրեք ապրանքը ⬇️", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("prod:"))
+def show_product(c: types.CallbackQuery):
+    code = c.data.split(":")[1]
+    prod = PRODUCTS.get(code)
+    if not prod:
+        bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
+        return
+
+    # Սլայդ/մեդիա խումբ
+    media_paths = [p for p in prod["photos"] if os.path.exists(p)]
+    if media_paths:
+        try:
+            media = [InputMediaPhoto(open(p, "rb")) for p in media_paths]
+            bot.send_media_group(c.message.chat.id, media)
+        except Exception as e:
+            # եթե media_group չստացվեց, գոնե առաջին նկարը ուղարկենք
+            try:
+                with open(media_paths[0], "rb") as ph:
+                    bot.send_photo(c.message.chat.id, ph)
+            except:
+                pass
+
+    # Ապրանքի caption + գործողության կոճակներ
+    caption = (
+        f"<b>{prod['title']}</b>\n\n"
+        f"{prod['desc']}\n\n"
+        f"Հին գին — {prod['old_price']}֏\n"
+        f"Նոր գին — <b>{prod['price']}֏</b>"
+    )
+    bot.send_message(c.message.chat.id, caption, reply_markup=product_inline_kb(code), parse_mode="HTML")
+    bot.answer_callback_query(c.id)
+
+# ⬅️ “Գլխավոր” inline կոճակին արձագանք
+@bot.callback_query_handler(func=lambda c: c.data == "go_home")
+def cb_go_home(c: types.CallbackQuery):
+    show_main_menu(c.message.chat.id)
+    bot.answer_callback_query(c.id)
 
 # ========== RUN ==========
 if __name__ == "__main__":
