@@ -82,15 +82,6 @@ def main_menu_kb():
 def show_main_menu(chat_id, text="Գլխավոր մենյու ✨"):
     bot.send_message(chat_id, text, reply_markup=main_menu_kb())
     
-@bot.message_handler(func=lambda m: m.text == BTN_BACK_MAIN)
-def back_to_main(m: types.Message):
-    uid = m.from_user.id
-    # Եթե գտնվում էինք checkout-ի ընթացքի մեջ՝ չեղարկենք
-    if uid in CHECKOUT_STATE:
-        CHECKOUT_STATE.pop(uid, None)
-        bot.send_message(m.chat.id, "❌ Պատվերի ձևակերպումը կասեցվեց։")
-    show_main_menu(m.chat.id)
-
 # ===== VALIDATION REGEX =====
 NAME_RE  = re.compile(r"^[A-Za-z\u0531-\u0556\u0561-\u0587ЁёЪъЫыЭэЙй\s'\-\.]{3,60}$")
 PHONE_RE = re.compile(r"^(\+374|0)\d{8}$")
