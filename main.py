@@ -81,15 +81,7 @@ def main_menu_kb():
 
 def show_main_menu(chat_id, text="Գլխավոր մենյու ✨"):
     bot.send_message(chat_id, text, reply_markup=main_menu_kb())
-    # 🔙 Վերադառնալ գլխավոր մենյու
-@bot.message_handler(func=lambda m: m.text in ("⬅️ Վերադառնալ գլխավոր մենյու", "🏠 Գլխավոր մենյու"))
-def back_main_msg(m: types.Message):
-    try:
-        CHECKOUT_STATE.pop(m.from_user.id, None)
-    except Exception:
-        pass
-    show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։ ✨")
-
+    
 # ===== VALIDATION REGEX =====
 NAME_RE  = re.compile(r"^[A-Za-z\u0531-\u0556\u0561-\u0587ЁёЪъЫыЭэЙй\s'\-\.]{3,60}$")
 PHONE_RE = re.compile(r"^(\+374|0)\d{8}$")
@@ -136,6 +128,15 @@ if not BOT_TOKEN:
 
 
 bot = TeleBot(BOT_TOKEN, parse_mode="Markdown")
+# 🔙 Վերադառնալ գլխավոր մենյու
+@bot.message_handler(func=lambda m: m.text in ("⬅️ Վերադառնալ գլխավոր մենյու", "🏠 Գլխավոր մենյու"))
+def back_main_msg(m: types.Message):
+    try:
+        CHECKOUT_STATE.pop(m.from_user.id, None)
+    except Exception:
+        pass
+    show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։ ✨")
+
 # === ADMIN PANEL + HEALTH-CHECK (drop-in block) ==============================
 # ՊԱՏՍՏԱՑՐԵԼ՝ տեղադրել bot = telebot.TeleBot(TOKEN) տողի ՀԵՏՈ մեկ անգամ
 # ՏԵՂԱՓՈԽԵԼ՝ ADMIN_ID-ն քո իրական Telegram ID-ով
