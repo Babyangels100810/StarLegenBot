@@ -1,49 +1,91 @@
-import os, json, time, traceback
+import os, json, time, re, threading, traceback, requests, random
 from datetime import datetime
-from telebot import TeleBot, types
-from dotenv import load_dotenv, find_dotenv
-from telebot import apihelper
+from collections import defaultdict
+from telebot import TeleBot, types, apihelper, util
 from telebot.types import InputMediaPhoto
-from collections import defaultdict
-import os, json, time, threading, traceback, datetime
-import re
-import requests
-from datetime import datetime
-from collections import defaultdict
-import re
-import random
-from telebot import util
+from dotenv import load_dotenv, find_dotenv
+
 # ===== STORAGE =====
 CART = defaultdict(dict)         # {user_id: {code: qty}}
 CHECKOUT_STATE = {}              # per-user checkout wizard state
 ORDERS = []                      # demo storage
 
-# վալիդացիա
+# ===== VALIDATION =====
 NAME_RE  = re.compile(r"^[A-Za-z\u0531-\u0556\u0561-\u0587ЁёЪъЫыЭэЙй\s'\-\.]{3,60}$")
 PHONE_RE = re.compile(r"^(\+374|0)\d{8}$")
 
-# order id
+# ===== ORDER HELPERS =====
 def _order_id():
-    import time
     return f"BA{int(time.time()) % 1000000}"
 
 def _cart_total(uid: int) -> int:
-    return sum(int(PRODUCTS[c]["price"]) * q for c, q in CART[uid].items())
+    try:
+        return sum(int(PRODUCTS[c]["price"]) * q for c, q in CART[uid].items())
+    except Exception:
+        return 0
 
 def _check_stock(uid: int):
     for code, qty in CART[uid].items():
-        st = PRODUCTS[code].get("stock")
+        st = PRODUCTS.get(code, {}).get("stock")
         if isinstance(st, int) and qty > st:
             return False, code, st
     return True, None, None
 
+# ===== TELEGRAM INIT =====
+apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
+
+load_dotenv()
+ENV_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
+print("dotenv path:", find_dotenv())
+print("BOT_TOKEN raw:", repr(ENV_TOKEN))
+print("BOT_TOKEN len:", len(ENV_TOKEN))
+
+if not ENV_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env")
+
+def ensure_dirs():
+    os.makedirs("data", exist_ok=True)
+    os.makedirs("media", exist_ok=True)
+    os.makedirs(os.path.join("media", "exchange"), exist_ok=True)
+    os.makedirs(os.path.join("media", "products"), exist_ok=True)
+
+ensure_dirs()
+
+BOT_TOKEN = ENV_TOKEN
+bot = TeleBot(BOT_TOKEN, parse_mode="Markdown")
+
+# ===== MAIN MENU =====
 BTN_BACK_MAIN = "⬅️ Վերադառնալ գլխավոր մենյու"
 
+def main_menu_kb():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("🛍 Խանութ", "🛒 Զամբյուղ")
+    kb.add("💱 Փոխարկումներ", "💡 Խոհուն մտքեր")
+    kb.add("📊 Օրվա կուրսեր", "🧍 Իմ էջը")
+    kb.add("💬 Կապ մեզ հետ", "🤝 Բիզնես գործընկերներ")
+    kb.add("🔍 Ապրանքի որոնում", "👥 Հրավիրել ընկերների")
+    kb.add("🏠 Գլխավոր մենյու")
+    return kb
+
+def show_main_menu(chat_id, text="Գլխավոր մենյու ✨"):
+    bot.send_message(chat_id, text, reply_markup=main_menu_kb())
+
+@bot.message_handler(func=lambda m: m.text in ("⬅️ Վերադառնալ գլխավոր մենյու", "🏠 Գլխավոր մենյու"))
+def back_main_msg(m: types.Message):
+    try:
+        CHECKOUT_STATE.pop(m.from_user.id, None)
+    except Exception:
+        pass
+    show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։ ✨")
+
+# ===== COUNTRIES + CITIES =====
 COUNTRIES = ["Հայաստան", "Ռուսաստան"]
-CITIES = ["Երևան","Գյումրի","Վանաձոր","Աբովյան","Արտաշատ","Արմավիր","Հրազդան","Մասիս","Աշտարակ","Եղվարդ","Չարենցավան"]
+CITIES = {
+    "Հայաստան": ["Երևան","Գյումրի","Վանաձոր","Աբովյան","Արտաշատ","Արմավիր","Հրազդան","Մասիս","Աշտարակ","Եղվարդ","Չարենցավան"],
+    "Ռուսաստան": ["Մոսկվա","Սանկտ Պետերբուրգ","Կրասնոդար","Սոչի","Կազան","Եկատերինբուրգ"]
+}
 
-ORDERS = []  # demo
-
+# ===== CHECKOUT (START) =====
 @bot.callback_query_handler(func=lambda c: c.data == "checkout:start")
 def checkout_start(c: types.CallbackQuery):
     uid = c.from_user.id
@@ -54,7 +96,11 @@ def checkout_start(c: types.CallbackQuery):
     ok, code, st = _check_stock(uid)
     if not ok:
         bot.answer_callback_query(c.id, "Պահեստում բավարար քանակ չկա")
-        bot.send_message(c.message.chat.id, f"⚠️ {PRODUCTS[code]['title']} — հասանելի՝ {st} հատ")
+        try:
+            title = PRODUCTS.get(code, {}).get("title", code)
+            bot.send_message(c.message.chat.id, f"⚠️ {title} — հասանելի՝ {st} հատ")
+        except:
+            pass
         return
 
     order_id = _order_id()
@@ -79,224 +125,12 @@ def checkout_start(c: types.CallbackQuery):
     bot.answer_callback_query(c.id)
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add(BTN_BACK_MAIN)
-    bot.send_message(c.message.chat.id, f"🧾 Պատվեր {order_id}\nԳրեք ձեր **Անուն Ազգանուն**:", reply_markup=kb)
-
-
-# ===== MAIN MENU =====
-def main_menu_kb():
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🛍 Խանութ", "🛒 Զամբյուղ")
-    kb.add("💱 Փոխարկումներ", "💬 Կապ մեզ հետ")
-    kb.add("🔍 Որոնել ապրանք", "🧍 Իմ էջը")
-    return kb
-
-def show_main_menu(chat_id, text="Գլխավոր մենյու ✨"):
-    bot.send_message(chat_id, text, reply_markup=main_menu_kb())
-    
-# դեպի Telegram API ճիշտ URL
-apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
-
-# .env
-load_dotenv()
-ENV_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or ""
-print("dotenv path:", find_dotenv())
-print("BOT_TOKEN raw:", repr(ENV_TOKEN))
-print("BOT_TOKEN len:", len(ENV_TOKEN))
-
-# ------------------- CONFIG / CONSTANTS -------------------
-DATA_DIR = "data"
-MEDIA_DIR = "media"
-SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
-THOUGHTS_FILE = os.path.join(DATA_DIR, "thoughts.json")
-PENDING_THOUGHTS_FILE = os.path.join(DATA_DIR, "pending_thoughts.json")
-ADS_FILE = os.path.join(DATA_DIR, "ads.json")
-PENDING_ADS_FILE = os.path.join(DATA_DIR, "pending_ads.json")
-
-ADMIN_ID = 6822052289
-RL_THOUGHT_SUBMIT_SEC = 180
-RL_AD_SUBMIT_SEC = 300
-
-# ------------------- HELPERS: FILE IO -------------------
-def ensure_dirs():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(MEDIA_DIR, exist_ok=True)
-    os.makedirs(os.path.join(MEDIA_DIR, "exchange"), exist_ok=True)
-    os.makedirs(os.path.join(MEDIA_DIR, "products"), exist_ok=True)
-
-# ------------------- BOT INIT -------------------
-ensure_dirs()
-
-# token՝ ENV > SETTINGS
-BOT_TOKEN = ENV_TOKEN or (SETTINGS.get("bot_token") or "")
-if not BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN is empty. Put it in your .env or settings.json")
-
-
-bot = TeleBot(BOT_TOKEN, parse_mode="Markdown")
-# 🔙 Վերադառնալ գլխավոր մենյու
-@bot.message_handler(func=lambda m: m.text in ("⬅️ Վերադառնալ գլխավոր մենյու", "🏠 Գլխավոր մենյու"))
-def back_main_msg(m: types.Message):
-    try:
-        CHECKOUT_STATE.pop(m.from_user.id, None)
-    except Exception:
-        pass
-    show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։ ✨")
-
-# === ADMIN PANEL + HEALTH-CHECK (drop-in block) ==============================
-# ՊԱՏՍՏԱՑՐԵԼ՝ տեղադրել bot = telebot.TeleBot(TOKEN) տողի ՀԵՏՈ մեկ անգամ
-# ՏԵՂԱՓՈԽԵԼ՝ ADMIN_ID-ն քո իրական Telegram ID-ով
-# ============================================================================
-# --- ԿԱՐԵՎՈՐ ԿԱՐԳԱՎՈՐՄԱՆԸ ---
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6822052289"))  # ← փոխիր, եթե պետք է
-
-# --- Ֆայլային պահեստ ---
-DATA_DIR = "admin_data"
-os.makedirs(DATA_DIR, exist_ok=True)
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
-MSG_LOG   = os.path.join(DATA_DIR, "messages.log")
-ERR_LOG   = os.path.join(DATA_DIR, "errors.log")
-
-def _load_users():
-    try:
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-def _save_users(data):
-    try:
-        with open(USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        _log_error(e)
-
-def _log_message(line: str):
-    try:
-        with open(MSG_LOG, "a", encoding="utf-8") as f:
-            f.write(line.rstrip() + "\n")
-    except Exception as e:
-        _log_error(e)
-
-def _log_error(e):
-    try:
-        with open(ERR_LOG, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.datetime.utcnow().isoformat()}Z] {repr(e)}\n")
-            f.write(traceback.format_exc() + "\n")
-    except:
-        pass
-
-# --- UPTIME / HEALTH ---
-START_TS = time.time()
-LAST_ERROR_TEXT = "չկա"
-
-def _set_last_error_text(text: str):
-    global LAST_ERROR_TEXT
-    LAST_ERROR_TEXT = text
-
-# --- Թեթև keep-alive թել (ոչինչ չի անում, պարզապես պահում ենք կենդանի վիճակը) ---
-def _keepalive_thread():
-    while True:
-        time.sleep(60)  # ամեն 60վ մի փոքր շնչում է
-t = threading.Thread(target=_keepalive_thread, daemon=True)
-t.start()
-
-# --- Քո բոտի բոլոր update-ները "լսելու" hook (չի խանգարում հենդլերներին) ---
-def _update_listener(updates):
-    # updates-ը list է՝ message/update օբյեկտներով
-    for u in updates:
-        try:
-            if getattr(u, "content_type", None):  # message
-                _capture_user_and_log(u)
-        except Exception as e:
-            _set_last_error_text(str(e))
-            _log_error(e)
-
-# Կցում ենք listener-ը (ՉԻ ՓՈԽՈՒՄ քո գործող հենդլերները)
-try:
-    bot.set_update_listener(_update_listener)
-except Exception as e:
-    _set_last_error_text("set_update_listener failed")
-    _log_error(e)
-
-# --- Օգտատերերի և հաղորդագրությունների ավտոմատ գրանցում ---
-def _capture_user_and_log(m):
-    # user bookkeeping
-    users = _load_users()
-    u = m.from_user
-    uid = str(u.id)
-    users.setdefault(uid, {
-        "id": u.id,
-        "first_name": u.first_name or "",
-        "last_name": u.last_name or "",
-        "username": u.username or "",
-        "lang": u.language_code or "",
-        "joined_at": datetime.datetime.utcnow().isoformat() + "Z",
-        "messages": 0,
-        "last_seen": "",
-        "blocked": False
-    })
-    users[uid]["messages"] += 1
-    users[uid]["last_seen"] = datetime.datetime.utcnow().isoformat() + "Z"
-    # keep latest username/name
-    users[uid]["first_name"] = u.first_name or users[uid]["first_name"]
-    users[uid]["last_name"]  = u.last_name or users[uid]["last_name"]
-    users[uid]["username"]   = u.username or users[uid]["username"]
-    _save_users(users)
-
-    # message log
-    try:
-        chat_type = getattr(m.chat, "type", "")
-        text = getattr(m, "text", None)
-        caption = getattr(m, "caption", None)
-        content = text if text is not None else (caption if caption is not None else m.content_type)
-        _log_message(f"[{datetime.datetime.utcnow().isoformat()}Z] "
-                     f"uid={u.id} (@{u.username}) chat={chat_type} -> {content}")
-    except Exception as e:
-        _set_last_error_text(str(e))
-        _log_error(e)
-
-# --- ՕԳՏԱԿԱՐ ՖՈՐՄԱՏՆԵՐ ---
-def fmt_user(u):
-    tag = f"@{u.get('username')}" if u.get("username") else f"id={u.get('id')}"
-    name = (u.get("first_name") or "") + (" " + u.get("last_name") if u.get("last_name") else "")
-    return f"{tag} — {name.strip()}"
-
-def _human_uptime():
-    sec = int(time.time() - START_TS)
-    d, sec = divmod(sec, 86400)
-    h, sec = divmod(sec, 3600)
-    m, s  = divmod(sec, 60)
-    parts = []
-    if d: parts.append(f"{d} օր")
-    if h: parts.append(f"{h} ժ")
-    if m: parts.append(f"{m} ր")
-    parts.append(f"{s} վ")
-    return " ".join(parts)
-
-# --- Ադմին ստուգում ---
-def _is_admin(uid: int) -> bool:
-    return int(uid) == int(ADMIN_ID)
-
-# --- ԱԴՄԻՆ ՄԵՆՅՈՒ / ԿՈՃԱԿՆԵՐ ---
-def admin_keyboard():
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("🧾 Վերջին հաղորդագրություններ", callback_data="adm_last_msgs"),
-        types.InlineKeyboardButton("👥 Վերջին օգտատերեր", callback_data="adm_last_users"),
+    bot.send_message(
+        c.message.chat.id,
+        f"🧾 Պատվեր {order_id}\nԳրեք ձեր **Անուն Ազգանուն**:",
+        reply_markup=kb
     )
-    kb.add(
-        types.InlineKeyboardButton("📣 Broadcast (բոլորին)", callback_data="adm_broadcast"),
-        types.InlineKeyboardButton("🔎 Փնտրել օգտատիրոջը", callback_data="adm_search"),
-    )
-    kb.add(
-        types.InlineKeyboardButton("⬇️ Ներբեռնել logs", callback_data="adm_download_logs"),
-        types.InlineKeyboardButton("📊 Վիճակագրություն / Ping", callback_data="adm_stats"),
-    )
-    kb.add(
-        types.InlineKeyboardButton("↩️ Փակել", callback_data="adm_close"),
-    )
-    return kb
+
 
 # --- /admin հրաման ---
 @bot.message_handler(commands=["admin"])
