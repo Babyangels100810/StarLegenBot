@@ -81,7 +81,15 @@ def main_menu_kb():
 
 def show_main_menu(chat_id, text="Գլխավոր մենյու ✨"):
     bot.send_message(chat_id, text, reply_markup=main_menu_kb())
-    
+    # 🔙 Վերադառնալ գլխավոր մենյու
+@bot.message_handler(func=lambda m: m.text in ("⬅️ Վերադառնալ գլխավոր մենյու", "🏠 Գլխավոր մենյու"))
+def back_main_msg(m: types.Message):
+    try:
+        CHECKOUT_STATE.pop(m.from_user.id, None)
+    except Exception:
+        pass
+    show_main_menu(m.chat.id, "Վերադարձաք գլխավոր մենյու։ ✨")
+
 # ===== VALIDATION REGEX =====
 NAME_RE  = re.compile(r"^[A-Za-z\u0531-\u0556\u0561-\u0587ЁёЪъЫыЭэЙй\s'\-\.]{3,60}$")
 PHONE_RE = re.compile(r"^(\+374|0)\d{8}$")
@@ -2159,28 +2167,13 @@ def _product_exists(code: str) -> bool:
 
 # ───────── CART ՀԵՆԴԼԵՐ ─────────
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("cart:"))
-def cart_handler(c: types.CallbackQuery):
-    """
-    cart:add:BA100819
-    cart:show
-    cart:inc:CODE
-    cart:dec:CODE
-    cart:rm:CODE
-    cart:clear
-    """
+def cart_callbacks(c: types.CallbackQuery):
     uid = c.from_user.id
     parts = c.data.split(":")
-    action = parts[1] if len(parts) > 1 else None
+    action = parts[1]
     code = parts[2] if len(parts) > 2 else None
 
-    # Միշտ ապահովենք dict-ը
-    _ = CART[uid]
-
-    # add
     if action == "add" and code:
-        if not _product_exists(code):
-            bot.answer_callback_query(c.id, "Ապրանքը չի գտնվել")
-            return
         st = PRODUCTS[code].get("stock")
         new_q = CART[uid].get(code, 0) + 1
         if isinstance(st, int) and new_q > st:
@@ -2188,21 +2181,15 @@ def cart_handler(c: types.CallbackQuery):
             return
         CART[uid][code] = new_q
         bot.answer_callback_query(c.id, "Ավելացվեց զամբյուղում ✅")
-        # ցույց տանք թարմացած զամբյուղը
-        bot.send_message(c.message.chat.id, _cart_text(uid), reply_markup=_cart_keyboard(uid), parse_mode="Markdown")
-        return
 
-    # inc
-    if action == "inc" and code:
-        if _product_exists(code):
-            st = PRODUCTS[code].get("stock")
-            new_q = CART[uid].get(code, 0) + 1
-            if isinstance(st, int) and new_q > st:
-                bot.answer_callback_query(c.id, "Վերջասահման՝ ըստ պահեստի")
-                return
-            CART[uid][code] = new_q
+    elif action == "inc" and code:
+        st = PRODUCTS[code].get("stock")
+        new_q = CART[uid].get(code, 0) + 1
+        if isinstance(st, int) and new_q > st:
+            bot.answer_callback_query(c.id, "Վերջասահմանը՝ ըստ պահեստի")
+            return
+        CART[uid][code] = new_q
 
-    # dec
     elif action == "dec" and code:
         q = CART[uid].get(code, 0)
         if q <= 1:
@@ -2210,28 +2197,36 @@ def cart_handler(c: types.CallbackQuery):
         else:
             CART[uid][code] = q - 1
 
-    # rm
     elif action == "rm" and code:
         CART[uid].pop(code, None)
 
-    # clear
     elif action == "clear":
         CART[uid].clear()
 
-    # show  կամ ցանկացած փոփոխությունից հետո ցուցադրել
+    # show cart (այստեղ ենք նաև "cart:show"-ը մշակում)
     if action in ("show", "add", "inc", "dec", "rm", "clear"):
-        bot.edit_message_text(
-            _cart_text(uid),
-            chat_id=c.message.chat.id,
-            message_id=c.message.message_id if c.message and c.message.message_id else None,
-            parse_mode="Markdown",
-            reply_markup=_cart_keyboard(uid)
-        ) if c.message and c.message.message_id else bot.send_message(
-            c.message.chat.id, _cart_text(uid), reply_markup=_cart_keyboard(uid), parse_mode="Markdown"
+        kb = types.InlineKeyboardMarkup()
+        for code, qty in list(CART[uid].items())[:6]:
+            title = PRODUCTS[code]["title"]
+            kb.row(types.InlineKeyboardButton(f"🛒 {title} ({qty})", callback_data="noop"))
+            kb.row(
+                types.InlineKeyboardButton("➖", callback_data=f"cart:dec:{code}"),
+                types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
+                types.InlineKeyboardButton("🗑", callback_data=f"cart:rm:{code}"),
+            )
+        kb.row(
+            types.InlineKeyboardButton("❌ Մաքրել", callback_data="cart:clear"),
+            types.InlineKeyboardButton("✅ Պատվիրել", callback_data="checkout:start"),
         )
+        kb.row(
+            types.InlineKeyboardButton("⬅️ Վերադառնալ ցուցակ", callback_data="back:home_list"),
+            types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="go_home"),
+        )
+        bot.send_message(c.message.chat.id, _cart_text(uid), reply_markup=kb, parse_mode="Markdown")
         bot.answer_callback_query(c.id)
     else:
         bot.answer_callback_query(c.id)
+
 
 # «🛒 Զամբյուղ» հիմնական մենյուի կոճակ
 @bot.message_handler(func=lambda m: (m.text or "").strip() == "🛒 Զամբյուղ")
@@ -2241,43 +2236,6 @@ def show_cart_cmd(m: types.Message):
     bot.send_message(m.chat.id, _cart_text(uid), reply_markup=_cart_keyboard(uid), parse_mode="Markdown")
 
 # ───────── CHECKOUT ─────────
-
-@bot.callback_query_handler(func=lambda c: c.data == "checkout:start")
-def checkout_start(c: types.CallbackQuery):
-    uid = c.from_user.id
-    if not CART[uid]:
-        bot.answer_callback_query(c.id, "Զամբյուղը դատարկ է")
-        return
-
-    ok, bad_code, st = _check_stock(uid)
-    if not ok:
-        bot.answer_callback_query(c.id, "Պահեստում բավարար քանակ չկա")
-        bot.send_message(c.message.chat.id, f"⚠️ {PRODUCTS[bad_code]['title']} — հասանելի՝ {st} հատ")
-        return
-
-    order_id = _order_id()
-    CHECKOUT_STATE[uid] = {
-        "step": "name",
-        "order": {
-            "order_id": order_id,
-            "user_id": uid,
-            "username": c.from_user.username or "",
-            "fullname": "",
-            "phone": "",
-            "country": "",
-            "city": "",
-            "address": "",
-            "comment": "",
-            "items": [{"code": code, "qty": qty} for code, qty in CART[uid].items()],
-            "total": _cart_total(uid),
-            "status": "Draft",
-            "payment": {"method": "", "amount": 0, "tx": "", "state": "Pending"},
-            "created_at": datetime.utcnow().isoformat()
-        }
-    }
-    bot.answer_callback_query(c.id)
-    bot.send_message(c.message.chat.id, f"🧾 Պատվեր {order_id}\nԳրեք ձեր **Անուն Ազգանուն**:")
-
 @bot.message_handler(func=lambda m: m.from_user.id in CHECKOUT_STATE)
 def checkout_flow(m: types.Message):
     uid = m.from_user.id
