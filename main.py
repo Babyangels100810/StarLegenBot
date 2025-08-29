@@ -1,71 +1,81 @@
-# Part 1 — clean start (welcome.txt-ից welcome)
+# -*- coding: utf-8 -*-
+# Part 1 — Base bot (ENV token, /start, welcome text, main menu)
+
 import os, json
 from telebot import TeleBot, types
-from dotenv import load_dotenv
 
-load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN") or ""
+# ----- Token from ENV -----
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN env variable is missing. Set it and run again.")
 bot = TeleBot(TOKEN, parse_mode="HTML")
 
-STATE_FILE = "state.json"
-
-def _load_customer_no() -> int:
+# ----- Simple customer counter (saved to file) -----
+COUNTER_FILE = "counter.json"
+def _load_counter() -> int:
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f).get("customer_no", 1000)
+        with open(COUNTER_FILE, "r", encoding="utf-8") as f:
+            return int(json.load(f).get("no", 1000))
     except Exception:
         return 1000
 
-def _save_customer_no(n: int) -> None:
-    try:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump({"customer_no": n}, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+def _save_counter(no: int) -> None:
+    with open(COUNTER_FILE, "w", encoding="utf-8") as f:
+        json.dump({"no": no}, f, ensure_ascii=False)
 
-def get_welcome_text(customer_no: int) -> str:
-    try:
-        with open("welcome.txt", "r", encoding="utf-8") as f:
-            txt = f.read()
-        return txt.format(customer_no=customer_no)
-    except Exception:
-        # fallback՝ եթե welcome.txt չկա կամ չի ընթերցվել
-        return f"Բարի գալուստ ❤️ Դուք արդեն մեր սիրելի հաճախորդն եք №{customer_no}։"
+customer_no = _load_counter()
 
-customer_no = _load_customer_no()
-
-# --- Գլխավոր մենյուի կոճակներ (միայն ցուցադրելու համար) ---
-BTN_SHOP      = "🛍 Խանութ"
+# ----- Main menu buttons (only layout; handlers կդնենք Part 2-ում) -----
+BTN_SHOP      = "🛍️ Խանութ"
 BTN_CART      = "🛒 Զամբյուղ"
 BTN_EXCHANGE  = "💱 Փոխանակումներ"
+BTN_THOUGHTS  = "💡 Խոհուն մտքեր"
+BTN_RATES     = "📊 Օրվա կուրսեր"
 BTN_PROFILE   = "👤 Իմ էջը"
-BTN_MAIN      = "🏠 Գլխավոր մենյու"
+BTN_FEEDBACK  = "💬 Կապ մեզ հետ"
+BTN_PARTNERS  = "🤝 Բիզնես գործընկերներ"
+BTN_SEARCH    = "🔎 Ապրանքի որոնում"
+BTN_INVITE    = "🧑‍🤝‍🧑 Հրավիրել ընկերների"
 
 def main_menu_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(BTN_SHOP, BTN_CART)
-    kb.add(BTN_EXCHANGE, BTN_PROFILE)
-    kb.add(BTN_MAIN)
+    kb.add(BTN_EXCHANGE, BTN_THOUGHTS)
+    kb.add(BTN_RATES, BTN_PROFILE)
+    kb.add(BTN_FEEDBACK, BTN_PARTNERS)
+    kb.add(BTN_SEARCH, BTN_INVITE)
     return kb
 
+# ----- Welcome text (քո տեքստը անփոփոխ) -----
+def welcome_text(no: int) -> str:
+    return (
+        "🐰🌸 Բարի գալուստ BabyAngels 🛍️\n\n"
+        f"💖 Շնորհակալ ենք, որ ընտրել եք մեզ ❤️ Դուք արդեն մեր սիրելի հաճախորդն եք №{no}։\n\n"
+        "🎁 Առաջին պատվերի համար ունեք 5% զեղչ — կգտնեք վճարման պահին։\n\n"
+        "📦 Մեզ մոտ կգտնեք․\n"
+        "• Ժամանակակից ու օգտակար ապրանքներ ամեն օր թարմացվող տեսականու մեջ\n"
+        "• Գեղեցիկ դիզայն և անմիջական օգտագործում\n"
+        "• Անվճար առաքում ամբողջ Հայաստանով\n\n"
+        "💱 Բացի խանութից՝ տրամադրում ենք նաև փոխանակման ծառայություններ․\n"
+        "PI ➝ USDT | FTN ➝ AMD | Alipay ➝ CNY\n\n"
+        "👇 Ընտրեք բաժին և սկսեք գնումները հիմա"
+    )
+
+# ----- /start -----
 @bot.message_handler(commands=["start"])
 def on_start(m: types.Message):
     global customer_no
     customer_no += 1
-    _save_customer_no(customer_no)
+    _save_counter(customer_no)
 
+    # ուղարկենք նապաստակի նկարը, եթե կա (ոչ պարտադիր)
     bunny = os.path.join("media", "bunny.jpg")
     if os.path.exists(bunny):
         with open(bunny, "rb") as ph:
             bot.send_photo(m.chat.id, ph)
 
-    bot.send_message(m.chat.id, get_welcome_text(customer_no), reply_markup=main_menu_kb())
+    bot.send_message(m.chat.id, welcome_text(customer_no), reply_markup=main_menu_kb())
 
-@bot.message_handler(func=lambda msg: msg.text == BTN_MAIN)
-def back_main(m: types.Message):
-    bot.send_message(m.chat.id, "🏠 Գլխավոր մենյու", reply_markup=main_menu_kb())
-
+# ----- Run -----
 if __name__ == "__main__":
-    if not TOKEN:
-        raise RuntimeError("BOT_TOKEN բացակայում է .env ֆայլից")
-    bot.infinity_polling(skip_pending=True)
+    bot.infinity_polling(timeout=60, long_polling_timeout=60)
