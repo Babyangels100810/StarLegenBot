@@ -143,29 +143,51 @@ def shop_categories_kb():
 def on_shop(m: types.Message):
     bot.send_message(m.chat.id, "Ընտրեք կատեգորիան 👇", reply_markup=shop_categories_kb())
 
-# Յուրաքանչյուր կատեգորիայի վրա սեղմելիս հիմա միայն placeholder
-# Կատեգորիաների ընդհանուր հենդլեր
+# ================== CATEGORY ROUTER (ADD-ONLY, DO NOT EDIT EXISTING) ==================
+
+# 1) եթե չկան, ստեղծում ենք հավաքական սեթ ու mapping՝ արդեն ՔՈ BTN_...-ներով
 CAT_BTNS = {
     BTN_HOME, BTN_CAR, BTN_KITCHEN, BTN_WATCH,
     BTN_PC, BTN_CARE, BTN_SMOKE, BTN_WOMEN,
     BTN_MEN, BTN_KIDS
 }
 
+CATEGORY_MAP = {
+    BTN_HOME:  "home",
+    BTN_CAR:   "car",
+    BTN_KITCHEN: "kitchen",
+    BTN_WATCH: "watch",
+    BTN_PC:    "pc",
+    BTN_CARE:  "care",
+    BTN_SMOKE: "smoke",
+    BTN_WOMEN: "women",
+    BTN_MEN:   "men",
+    BTN_KIDS:  "kids",
+}
+
+# 2) Միակ հենդլեր՝ որը ՌՈՈՒԹ է անում դեպի ՔՈ ԱՐԴԵՆ ԿԱ show_category(...) ֆունկցիան
 @bot.message_handler(func=lambda m: m.text in CAT_BTNS)
-def on_category(m: types.Message):
-    mapping = {
-        BTN_HOME:  "home",
-        BTN_CAR:   "car",
-        BTN_KITCHEN: "kitchen",
-        BTN_WATCH: "watch",
-        BTN_PC:    "pc",
-        BTN_CARE:  "care",
-        BTN_SMOKE: "smoke",
-        BTN_WOMEN: "women",
-        BTN_MEN:   "men",
-        BTN_KIDS:  "kids",
-    }
-    show_category(m.chat.id, mapping[m.text])
+def _route_category(m: types.Message):
+    key = CATEGORY_MAP.get(m.text)
+    if key:
+        try:
+            show_category(m.chat.id, key)   # <<<< ՔՈ եղած ֆունկցիան, ոչինչ չենք փոխում
+        except Exception as e:
+            bot.send_message(m.chat.id, f"Սխալ կատեգորիան բացելիս: {e}")
+
+# 3) Եթե inline կոճակներից գալիս է 'mainmenu' callback_data, քո գլխավոր մենյուն ցույց տա
+@bot.callback_query_handler(func=lambda c: c.data == "mainmenu")
+def _cb_mainmenu(c: types.CallbackQuery):
+    try:
+        bot.answer_callback_query(c.id)
+    except:
+        pass
+    try:
+        bot.edit_message_text("🏠 Գլխավոր մենյու", c.message.chat.id, c.message.message_id, reply_markup=main_menu_kb())
+    except:
+        # եթե edit չստացվի (օր. հին մեսիջ է), ուղարկի նոր մեսիջ
+        bot.send_message(c.message.chat.id, "🏠 Գլխավոր մենյու", reply_markup=main_menu_kb())
+
 
 
 # --- CATEGORIES ---
