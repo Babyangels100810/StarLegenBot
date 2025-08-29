@@ -5,13 +5,16 @@ from telebot import types
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise SystemExit("❌ BOT_TOKEN չի գտնվել. .env-ը ճիշտ տեղում/անունո՞վ է։")
+
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# Քո ուղարկած ողջույնի խոսքը
+# Քո ուղարկած ողջույնի խոսքը 1:1
 GREETING_TEXT = (
     "🐰🌸 Բարի գալուստ BabyAngels 🛍️\n\n"
     "💖 Շնորհակալ ենք, որ ընտրել եք մեզ ❤️ Դուք արդեն մեր սիրելի հաճախորդն եք №{customer_no}։\n\n"
-    "🎁 Լավ լուր․ առաջին պատվերի համար ունեք 5% զեղչ — կգտնեք վարկածի ավարտին վճարման պահին։\n\n"
+    "🎁 Լավ լուր․ առաջին պատվերի համար ունեք 5% զեղ్చ — կգտնեք վարկածի ավարտին վճարման պահին։\n\n"
     "📦 Ի՞նչ կգտնեք մեզ մոտ․\n"
     "• Ժամանակակից ու օգտակար ապրանքներ ամեն օր թարմացվող տեսականու մեջ\n"
     "• Գեղեցիկ դիզայն և անմիջական օգտագործում\n"
@@ -21,7 +24,7 @@ GREETING_TEXT = (
     "👇 Ընտրեք բաժին և սկսեք գնումները հիմա"
 )
 
-# Մենյու (քո ուղարկած)
+# Քո մենյուն՝ ըստ նկարի
 MENU_ROWS = [
     ["🛍 Խանութ", "🛒 Զամբյուղ"],
     ["💱 Փոխարկումներ", "👤 Իմ էջը"],
@@ -31,7 +34,7 @@ MENU_ROWS = [
     ["🏠 Գլխավոր մենյու"]
 ]
 
-# Հաճախորդի հաշվիչ
+# Հաճախորդների հաշվիչ (պարզ՝ հիշողության մեջ)
 customer_counter = 1007
 def get_new_customer_id():
     global customer_counter
@@ -44,20 +47,22 @@ def send_welcome(message):
 
     # bunny.jpg ուղարկում
     photo_path = os.path.join("media", "bunny.jpg")
-    with open(photo_path, "rb") as photo:
-        bot.send_photo(
-            message.chat.id,
-            photo,
-            caption=GREETING_TEXT.format(customer_no=customer_no)
-        )
+    if not os.path.exists(photo_path):
+        bot.send_message(message.chat.id, "⚠️ Չգտա media/bunny.jpg լուսանկարը։")
+    else:
+        with open(photo_path, "rb") as photo:
+            bot.send_photo(
+                message.chat.id,
+                photo,
+                caption=GREETING_TEXT.format(customer_no=customer_no)
+            )
 
-    # Մենյու
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    # Մենյու կառուցում
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for row in MENU_ROWS:
-        markup.row(*row)
+        kb.row(*row)
+    bot.send_message(message.chat.id, "Մենյուից ընտրեք բաժին 👇", reply_markup=kb)
 
-    bot.send_message(message.chat.id, "Մենյուից ընտրեք բաժին 👇", reply_markup=markup)
-
-print("🤖 Bot is running…")
+print("🤖 Bot is running…  /start")
 bot.infinity_polling()
 
