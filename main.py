@@ -369,6 +369,195 @@ PRODUCTS = {
         ),
     },
 }
+# ---------------- CATEGORIES ----------------
+# Քեզ մոտ PRODUCTS արդեն կա (BA10..., CAR001 և այլն) — այստեղ կապում ենք կատեգորիաների հետ
+CATEGORIES = {
+    "home": {
+        "title": "🏡 Կենցաղային պարագաներ",
+        # քո գորգերի կոդերը տեղավորի այստեղ
+        "items": ["BA100810","BA100811","BA100812","BA100813","BA100814","BA100815","BA100816","BA100817","BA100818","BA100819","BA100820"]
+    },
+    "car": {
+        "title": "🚗 Ավտոմեքենայի պարագաներ",
+        # օրինակ՝ ապակու մաքրող սարք
+        "items": ["CAR001"]
+    },
+    # Կարաս հետո ավելացնես մյուսները՝ նույն ձևով
+    "beauty":  {"title": "💄 Գեղեցկության/խնամք", "items": []},
+    "kids":    {"title": "👶 Մանկական (ընտրվող)", "items": []},
+    "men":     {"title": "🧍‍♂️ Տղամարդկանց (ընտրվող)", "items": []},
+    "women":   {"title": "👩 Կանանց (ընտրվող)", "items": []},
+    "gadgets": {"title": "💻 Համանվագչային (ընտրվող)", "items": []},
+    "clean":   {"title": "🧼 Քիմմաքի ապրանքներ", "items": []},
+    "measure": {"title": "🔎 Խոհանոց/կենցաղ", "items": []},
+    "season":  {"title": "🌬️ Սեզոնային", "items": []},
+    "travel":  {"title": "🧳 Փոքրաքանակ ուղեփ", "items": []},
+}
+
+# ---------------- PRICE HELPERS ----------------
+def price_int(code: str) -> int:
+    d = PRODUCTS.get(code, {})
+    p = str(d.get("price", "0"))
+    digits = "".join(ch for ch in p if ch.isdigit())
+    return int(digits or "0")
+
+def price_old_int(code: str) -> int:
+    d = PRODUCTS.get(code, {})
+    p = str(d.get("price_old", d.get("price", "0")))
+    digits = "".join(ch for ch in p if ch.isdigit())
+    return int(digits or "0")
+
+def _fmt_cur(v: int) -> str:
+    # 1690֏ → '1 690֏'
+    s = f"{v:,}".replace(",", " ")
+    return f"{s}֏"
+
+# ---------------- KEYBOARDS ----------------
+def categories_kb():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(types.KeyboardButton("🏡 Կենցաղային պարագաներ"),
+           types.KeyboardButton("🚗 Ավտոմեքենայի պարագաներ"))
+    kb.add(types.KeyboardButton(BTN_BACK_MAIN), types.KeyboardButton(BTN_MAIN))
+    return kb
+
+def _category_inline_kb(cat_key: str):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Կատեգորիաներ", callback_data="shop:backcats"),
+           types.InlineKeyboardButton("🏠 Գլխավոր", callback_data="shop:main"))
+    return kb
+
+def _products_page_kb(cat_key: str):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Կատեգորիաներ", callback_data="shop:backcats"))
+    return kb
+
+def _item_kb(code: str):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("🛒 Ավելացնել զամբյուղ", callback_data=f"cart:add:{code}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Վերադառնալ", callback_data=f"shop:catof:{code}"),
+           types.InlineKeyboardButton("🏠 Գլխավոր", callback_data="shop:main"))
+    return kb
+
+# ---------------- OPENERS ----------------
+def _product_main_image(code: str) -> str | None:
+    # եթե ապրանքի dict-ում կա 'img_main' օգտագործում ենք, թե չէ media/products/<code>*.jpg
+    d = PRODUCTS.get(code, {})
+    if "img_main" in d and os.path.exists(d["img_main"]):
+        return d["img_main"]
+    # փնտրում ենք media/products/shared կամ media/products/<աղբյուր պապկա> ...
+    # ամենապարզը՝ փորձել մի քանի տարբերակ
+    guess_list = [
+        os.path.join(MEDIA_DIR, "products", f"{code}.jpg"),
+        os.path.join(MEDIA_DIR, "products", f"{code}.png"),
+        os.path.join(MEDIA_DIR, "products", "shared", f"{code}.jpg"),
+        os.path.join(MEDIA_DIR, "products", "shared", f"{code}.png"),
+    ]
+    for p in guess_list:
+        if os.path.exists(p):
+            return p
+    return d.get("img") if os.path.exists(d.get("img","")) else None
+
+def _item_caption(code: str) -> str:
+    d = PRODUCTS.get(code, {})
+    title = d.get("title", code)
+    p_new = _fmt_cur(price_int(code))
+    p_old = price_old_int(code)
+    price_line = f"<b>{p_new}</b>"
+    if p_old and p_old > price_int(code):
+        price_line = f"<s>{_fmt_cur(p_old)}</s>  <b>{p_new}</b>"
+    return f"<b>{title}</b> – <code>{code}</code>\n{price_line}\n👉 Սեղմեք «Ավելացնել զամբյուղ»"
+
+# ---------------- VIEWS ----------------
+def show_categories(chat_id: int):
+    bot.send_message(chat_id, "Ընտրեք կատեգորիա 👇", reply_markup=categories_kb())
+
+def show_category(chat_id: int, cat_key: str):
+    cat = CATEGORIES.get(cat_key)
+    if not cat:
+        bot.send_message(chat_id, "Կատեգորիան չի գտնվել։", reply_markup=categories_kb())
+        return
+    title = cat["title"]
+    items = cat.get("items", [])
+    if not items:
+        bot.send_message(chat_id, f"«{title}» բաժնում ապրանքները կհավելենք շուտով (Part 3).",
+                         reply_markup=categories_kb())
+        return
+
+    # յուրաքանչյուր ապրանքի համար՝ preview (ֆոտո + գներ) մեսիջ
+    for code in items:
+        img = _product_main_image(code)
+        cap = _item_caption(code)
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("🔍 Դիտել մանրամասն", callback_data=f"shop:item:{code}"))
+        kb.add(types.InlineKeyboardButton("⬅️ Կատեգորիաներ", callback_data="shop:backcats"))
+        if img:
+            try:
+                with open(img, "rb") as ph:
+                    bot.send_photo(chat_id, ph, caption=cap, reply_markup=kb, parse_mode="HTML")
+            except:
+                bot.send_message(chat_id, cap, reply_markup=kb, parse_mode="HTML")
+        else:
+            bot.send_message(chat_id, cap, reply_markup=kb, parse_mode="HTML")
+
+def open_item(chat_id: int, code: str):
+    img = _product_main_image(code)
+    cap = _item_caption(code)
+    kb  = _item_kb(code)
+    if img:
+        try:
+            with open(img, "rb") as ph:
+                bot.send_photo(chat_id, ph, caption=cap, reply_markup=kb, parse_mode="HTML")
+        except:
+            bot.send_message(chat_id, cap, reply_markup=kb, parse_mode="HTML")
+    else:
+        bot.send_message(chat_id, cap, reply_markup=kb, parse_mode="HTML")
+
+# ---------------- HANDLERS ----------------
+@bot.message_handler(func=lambda m: m.text == BTN_SHOP)
+def shop_entry(m: types.Message):
+    show_categories(m.chat.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("shop:"))
+def shop_callbacks(c: types.CallbackQuery):
+    data = c.data.split(":", 2)  # shop:action[:arg]
+    action = data[1] if len(data) > 1 else ""
+    arg = data[2] if len(data) > 2 else ""
+
+    if action == "backcats" or action == "main":
+        bot.answer_callback_query(c.id)
+        show_categories(c.message.chat.id)
+        return
+
+    if action == "cat":
+        # օրինակ՝ shop:cat:home
+        bot.answer_callback_query(c.id)
+        show_category(c.message.chat.id, arg)
+        return
+
+    if action == "item":
+        bot.answer_callback_query(c.id)
+        open_item(c.message.chat.id, arg)
+        return
+
+    if action == "catof":
+        # shop:catof:CODE → վերադառնալ հենց այդ ապրանքի կատեգորիա
+        code = arg
+        # փնտրում ենք որ կատեգորիայի մեջ է այդ code-ը
+        for k, v in CATEGORIES.items():
+            if code in v.get("items", []):
+                show_category(c.message.chat.id, k)
+                break
+        bot.answer_callback_query(c.id)
+        return
+
+# ---------------- MESSAGE SHORTCUTS ----------------
+@bot.message_handler(func=lambda m: m.text == "🏡 Կենցաղային պարագաներ")
+def open_home(m: types.Message):
+    show_category(m.chat.id, "home")
+
+@bot.message_handler(func=lambda m: m.text == "🚗 Ավտոմեքենայի պարագաներ")
+def open_car(m: types.Message):
+    show_category(m.chat.id, "car")
 
 # --- Run ---
 if __name__ == "__main__":
