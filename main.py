@@ -2,6 +2,7 @@
 import os, time, re, json, threading, traceback, requests, random
 from datetime import datetime
 from collections import defaultdict
+from types import SimpleNamespace as SNS
 
 from telebot import TeleBot, types, apihelper
 from telebot.types import InputMediaPhoto
@@ -663,6 +664,195 @@ def cb_back_cat(call: types.CallbackQuery):
     for code in CATEGORIES[cat_key]["products"]:
         send_preview(call.message.chat.id, code, cat_key)
     bot.answer_callback_query(call.id)
+# ========== PART 4/8 — CART AS PHOTOS (QTY + VIEW PRODUCT) ==========
+
+# պահենք վերջին ընդհանուր հաղորդագրության id-ը, որ թարմացնենք
+CART_SUMMARY_MSG = {}  # {uid: message_id}
+
+def _price_int(code: str) -> int:
+    d = PRODUCTS.get(code, {})
+    s = str(d.get("price_new", "0"))
+    digits = "".join(ch for ch in s if ch.isdigit())
+    return int(digits or "0")
+
+def _item_caption(code: str, qty: int) -> str:
+    d = PRODUCTS.get(code, {})
+    title = d.get("title", code)
+    p = _price_int(code)
+    subtotal = p * qty
+    return (
+        f"<b>{title}</b>\n"
+        f"{qty} հատ × {p}֏ = <b>{subtotal}֏</b>\n"
+        f"Կոդ՝ <code>{code}</code>"
+    )
+
+def _item_kb(code: str, qty: int):
+    kb = types.InlineKeyboardMarkup()
+    kb.row(
+        types.InlineKeyboardButton("➖", callback_data=f"cart:dec:{code}"),
+        types.InlineKeyboardButton(f"{qty} հատ", callback_data="noop"),
+        types.InlineKeyboardButton("➕", callback_data=f"cart:inc:{code}"),
+    )
+    kb.row(
+        types.InlineKeyboardButton("🔎 Դիտել ապրանքը", callback_data=f"detail:{code}"),
+        types.InlineKeyboardButton("❌ Հեռացնել", callback_data=f"cart:del:{code}"),
+    )
+    return kb
+
+def _cart_total(uid: int) -> int:
+    total = 0
+    for code, qty in CART.get(uid, {}).items():
+        total += _price_int(code) * qty
+    return total
+
+def _cart_summary_text(uid: int) -> str:
+    items = CART.get(uid, {})
+    if not items:
+        return "🛒 Զամբյուղը դատարկ է։"
+    total = _cart_total(uid)
+    lines = ["<b>Զամբյուղի ամփոփում</b>"]
+    for code, qty in items.items():
+        lines.append(f"• {PRODUCTS.get(code,{}).get('title', code)} — {qty} հատ")
+    lines.append(f"\nԸնդամենը՝ <b>{total}֏</b>")
+    return "\n".join(lines)
+
+def _cart_summary_kb():
+    kb = types.InlineKeyboardMarkup()
+    kb.row(
+        types.InlineKeyboardButton("🧹 Մաքրել զամբյուղը", callback_data="cart:clear"),
+        types.InlineKeyboardButton("⬅️ Կատեգորիաներ", callback_data="back:cats"),
+    )
+    kb.add(types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="mainmenu"))
+    kb.add(types.InlineKeyboardButton("✅ Շարունակել պատվերով", callback_data="checkout:start"))  # Part 5-ում
+    return kb
+
+def _send_or_update_summary(chat_id: int, uid: int):
+    text = _cart_summary_text(uid)
+    kb = _cart_summary_kb()
+    msg_id = CART_SUMMARY_MSG.get(uid)
+    try:
+        if msg_id:
+            bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=text, reply_markup=kb, parse_mode="HTML")
+        else:
+            msg = bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
+            CART_SUMMARY_MSG[uid] = msg.message_id
+    except Exception:
+        # եթե չի հաջողվում edit անել (ջնջվել է), ուղարկում ենք նոր
+        msg = bot.send_message(chat_id, text, reply_markup=kb, parse_mode="HTML")
+        CART_SUMMARY_MSG[uid] = msg.message_id
+
+def _product_main_image(code: str):
+    d = PRODUCTS.get(code, {})
+    media = d.get("media", [])
+    for p in media:
+        if not p.lower().endswith(".mp4") and os.path.exists(p):
+            return p
+    return None
+
+# -------- Open Cart from main menu
+@bot.message_handler(func=lambda m: m.text == BTN_CART)
+def open_cart(m: types.Message):
+    uid = m.from_user.id
+    items = CART.get(uid, {})
+    if not items:
+        bot.send_message(m.chat.id, "🛒 Զամբյուղը դատարկ է։", reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add(BTN_BACK_MAIN, BTN_MAIN))
+        return
+
+    for code, qty in list(items.items()):
+        img = _product_main_image(code)
+        cap = _item_caption(code, qty)
+        kb = _item_kb(code, qty)
+        if img:
+            with open(img, "rb") as ph:
+                bot.send_photo(m.chat.id, ph, caption=cap, reply_markup=kb, parse_mode="HTML")
+        else:
+            bot.send_message(m.chat.id, cap, reply_markup=kb, parse_mode="HTML")
+
+    _send_or_update_summary(m.chat.id, uid)
+
+# -------- Cart actions (inc/dec/del/clear/open/add)
+@bot.callback_query_handler(func=lambda c: c.data.startswith("cart:") or c.data=="noop")
+def cart_actions(call: types.CallbackQuery):
+    uid = call.from_user.id
+    data = call.data
+    if data == "noop":
+        bot.answer_callback_query(call.id)
+        return
+
+    _, action, *rest = data.split(":")
+    chat_id = call.message.chat.id
+    msg_id = call.message.message_id
+
+    # helpers to refresh this item's caption/keyboard
+    def _refresh_item_msg(code):
+        qty = CART[uid].get(code, 0)
+        if qty <= 0:
+            # item removed: delete its message
+            try:
+                bot.delete_message(chat_id, msg_id)
+            except Exception:
+                pass
+        else:
+            try:
+                bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    caption=_item_caption(code, qty),
+                    reply_markup=_item_kb(code, qty),
+                    parse_mode="HTML"
+                )
+            except Exception:
+                # if can't edit (e.g., not a photo), send a new message
+                bot.send_message(chat_id, _item_caption(code, qty), reply_markup=_item_kb(code, qty), parse_mode="HTML")
+
+        # and update summary
+        _send_or_update_summary(chat_id, uid)
+
+    if action == "open":
+        bot.answer_callback_query(call.id)
+        # resend full cart UI
+        fake = types.SimpleNamespace(from_user=types.SimpleNamespace(id=uid), chat=types.SimpleNamespace(id=chat_id), text=BTN_CART)
+        open_cart(fake)  # reuse
+        return
+
+    if action == "add":
+        code = rest[0]
+        CART[uid][code] = CART[uid].get(code, 0) + 1
+        bot.answer_callback_query(call.id, "Ավելացվեց զամբյուղ")
+        _send_or_update_summary(chat_id, uid)
+        return
+
+    if action in ("inc", "dec", "del"):
+        code = rest[0]
+        if action == "inc":
+            CART[uid][code] = CART[uid].get(code, 0) + 1
+        elif action == "dec":
+            q = CART[uid].get(code, 0) - 1
+            if q <= 0:
+                CART[uid].pop(code, None)
+            else:
+                CART[uid][code] = q
+        elif action == "del":
+            CART[uid].pop(code, None)
+        bot.answer_callback_query(call.id)
+        _refresh_item_msg(code)
+        return
+
+    if action == "clear":
+        CART[uid].clear()
+        bot.answer_callback_query(call.id, "Զամբյուղը մաքրվեց")
+        # փորձենք թարմացնել summary-ն
+        _send_or_update_summary(chat_id, uid)
+        return
+
+# -------- Optional: "Բացել զամբյուղը" detail էջից
+@bot.callback_query_handler(func=lambda c: c.data == "cart:open")
+def cart_open_from_detail(call: types.CallbackQuery):
+    uid = call.from_user.id
+    bot.answer_callback_query(call.id)
+    # ուղարկենք ամբողջ զամբյուղը՝ նկարներով
+    fake = types.SimpleNamespace(from_user=types.SimpleNamespace(id=uid), chat=types.SimpleNamespace(id=call.message.chat.id), text=BTN_CART)
+    open_cart(fake)
 
 # ========== RUN ==========
 if __name__ == "__main__":
