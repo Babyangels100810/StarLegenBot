@@ -427,7 +427,7 @@ CATEGORIES = {
     }
 }
 
-# ---------------- CATEGORY MENU ----------------
+# ---------------- CATEGORIES MENU ----------------
 def categories_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for key, cat in CATEGORIES.items():
@@ -437,44 +437,162 @@ def categories_kb():
 
 @bot.message_handler(func=lambda m: m.text == BTN_SHOP)
 def shop_menu(m: types.Message):
-    kb = categories_kb()
-    bot.send_message(m.chat.id, "🛍 Ընտրեք կատեգորիա", reply_markup=kb)
+    bot.send_message(m.chat.id, "🛍 Ընտրեք կատեգորիա", reply_markup=categories_kb())
 
-# ---------------- PRODUCT VIEW ----------------
-def product_caption(p: dict) -> str:
-    return (
-        f"<b>{p['title']}</b>\n\n"
-        f"{p['desc']}\n\n"
-        f"Հին գին — {p['old_price']}֏ (−34%)\n"
-        f"Նոր գին — {p['price']}֏\n"
-        f"Վաճառված՝ {p['sold']} հատ"
+def _cat_key_by_title(title: str):
+    for k, c in CATEGORIES.items():
+        if c["title"] == title:
+            return k
+    return None
+
+# ---------------- PREVIEW (միայն գլխավոր նկար + կոճակ) ----------------
+def _first_image_path(p: dict) -> str:
+    for path in p["media"]:
+        if not path.lower().endswith(".mp4"):
+            return path
+    return None
+
+def _preview_kb(code: str, cat_key: str):
+    ikb = types.InlineKeyboardMarkup()
+    ikb.add(types.InlineKeyboardButton("🔎 Դիտել մանրամասն", callback_data=f"view|{code}|0|{cat_key}"))
+    ikb.add(
+        types.InlineKeyboardButton("⬅️ Վերադառնալ", callback_data=f"backcat|{cat_key}"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="mainmenu")
     )
+    return ikb
 
-def send_product(chat_id, code: str):
+def send_preview(chat_id: int, code: str, cat_key: str):
     p = PRODUCTS[code]
-    media = []
-    for i, path in enumerate(p["media"]):
-        if path.endswith(".mp4"):
-            bot.send_video(chat_id, open(path, "rb"),
-                caption=product_caption(p) if i == 0 else None, parse_mode="HTML")
-        else:
-            if i == 0:
-                media.append(InputMediaPhoto(open(path, "rb"),
-                    caption=product_caption(p), parse_mode="HTML"))
-            else:
-                media.append(InputMediaPhoto(open(path, "rb")))
-    if media:
-        bot.send_media_group(chat_id, media)
+    cover = _first_image_path(p)
+    caption = f"<b>{p['title']}</b>\n💵 {p['price']}֏   <s>{p['old_price']}֏</s>\n👉 Սեղմեք «Դիտել մանրամասն»"
+    if cover and os.path.exists(cover):
+        with open(cover, "rb") as ph:
+            bot.send_photo(chat_id, ph, caption=caption, parse_mode="HTML", reply_markup=_preview_kb(code, cat_key))
+    else:
+        bot.send_message(chat_id, caption, reply_markup=_preview_kb(code, cat_key), parse_mode="HTML")
 
-# ---------------- CATEGORY HANDLER ----------------
 @bot.message_handler(func=lambda m: m.text in [c["title"] for c in CATEGORIES.values()])
 def on_category(m: types.Message):
-    for key, cat in CATEGORIES.items():
-        if m.text == cat["title"]:
-            for code in cat["products"]:
-                send_product(m.chat.id, code)
-            bot.send_message(m.chat.id, "⬅️ Վերադառնալ գլխավոր մենյու", reply_markup=main_menu_kb())
-            break
+    cat_key = _cat_key_by_title(m.text)
+    if not cat_key:
+        return
+    CHECKOUT_STATE.pop(m.from_user.id, None)
+
+    bot.send_message(m.chat.id, f"{CATEGORIES[cat_key]['title']}\n— ընտրեք ապրանքը պատկերից։")
+    for code in CATEGORIES[cat_key]["products"]:
+        send_preview(m.chat.id, code, cat_key)
+
+# ---------------- PRODUCT SLIDER ----------------
+def product_caption(p: dict, idx: int) -> str:
+    total_imgs = sum(1 for x in p["media"] if not x.lower().endswith(".mp4"))
+    page = f"\n\n🖼 Նկար {idx+1}/{total_imgs}" if total_imgs else ""
+    return (
+        f"<b>{p['title']}</b>\n\n{p['desc']}\n\n"
+        f"Հին գին — {p['old_price']}֏ (−34%)\n"
+        f"Նոր գին — {p['price']}֏\n"
+        f"Վաճառված՝ {p['sold']} հատ{page}"
+    )
+
+def _images_only(media_list):
+    return [p for p in media_list if not p.lower().endswith(".mp4")]
+
+def _has_video(media_list):
+    return any(p.lower().endswith(".mp4") for p in media_list)
+
+def _slider_kb(code: str, idx: int, cat_key: str, has_video: bool):
+    ikb = types.InlineKeyboardMarkup()
+    row = []
+    row.append(types.InlineKeyboardButton("⬅️ Նախորդ", callback_data=f"prev|{code}|{idx}|{cat_key}"))
+    row.append(types.InlineKeyboardButton("➡️ Հաջորդ", callback_data=f"next|{code}|{idx}|{cat_key}"))
+    ikb.row(*row)
+    if has_video:
+        ikb.add(types.InlineKeyboardButton("▶️ Տեսանյութ", callback_data=f"video|{code}|{cat_key}"))
+    ikb.add(types.InlineKeyboardButton("🛒 Ավելացնել զամբյուղ", callback_data=f"add|{code}|{cat_key}|{idx}"))
+    ikb.add(
+        types.InlineKeyboardButton("⬅️ Վերադառնալ կատեգորիա", callback_data=f"backcat|{cat_key}"),
+        types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="mainmenu"),
+    )
+    return ikb
+
+def _edit_photo(call, code: str, idx: int, cat_key: str):
+    p = PRODUCTS[code]
+    imgs = _images_only(p["media"])
+    if not imgs:
+        bot.answer_callback_query(call.id, "Նկար չի գտնվել")
+        return
+    total = len(imgs)
+    idx = (idx + total) % total
+    with open(imgs[idx], "rb") as ph:
+        media = types.InputMediaPhoto(ph, caption=product_caption(p, idx), parse_mode="HTML")
+        try:
+            bot.edit_message_media(
+                media=media,
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=_slider_kb(code, idx, cat_key, _has_video(p["media"]))
+            )
+        except Exception:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_photo(call.message.chat.id, open(imgs[idx], "rb"),
+                           caption=product_caption(p, idx), parse_mode="HTML",
+                           reply_markup=_slider_kb(code, idx, cat_key, _has_video(p["media"])))
+    return idx
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("view|"))
+def cb_view(call: types.CallbackQuery):
+    _, code, idx, cat_key = call.data.split("|")
+    idx = int(idx)
+    _edit_photo(call, code, idx, cat_key)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("next|"))
+def cb_next(call: types.CallbackQuery):
+    _, code, idx, cat_key = call.data.split("|")
+    idx = int(idx) + 1
+    _edit_photo(call, code, idx, cat_key)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("prev|"))
+def cb_prev(call: types.CallbackQuery):
+    _, code, idx, cat_key = call.data.split("|")
+    idx = int(idx) - 1
+    _edit_photo(call, code, idx, cat_key)
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("video|"))
+def cb_video(call: types.CallbackQuery):
+    _, code, cat_key = call.data.split("|")
+    p = PRODUCTS[code]
+    vids = [v for v in p["media"] if v.lower().endswith(".mp4")]
+    if vids and os.path.exists(vids[0]):
+        with open(vids[0], "rb") as vf:
+            bot.send_video(call.message.chat.id, vf, caption=f"{p['title']} — տեսանյութ")
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("add|"))
+def cb_add_cart(call: types.CallbackQuery):
+    _, code, cat_key, idx = call.data.split("|")
+    uid = call.from_user.id
+    CART[uid][code] = CART[uid].get(code, 0) + 1
+    bot.answer_callback_query(call.id, text="Ավելացվեց զամբյուղ 🛒", show_alert=False)
+
+@bot.callback_query_handler(func=lambda c: c.data == "mainmenu")
+def cb_main_menu(call: types.CallbackQuery):
+    show_main_menu(call.message.chat.id, "🏠 Գլխավոր մենյու")
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("backcat|"))
+def cb_back_cat(call: types.CallbackQuery):
+    _, cat_key = call.data.split("|")
+    try:
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+    except Exception:
+        pass
+    bot.send_message(call.message.chat.id, f"{CATEGORIES[cat_key]['title']}\n— ընտրեք ապրանքը պատկերից։",
+                     reply_markup=categories_kb())
+    for code in CATEGORIES[cat_key]["products"]:
+        send_preview(call.message.chat.id, code, cat_key)
+    bot.answer_callback_query(call.id)
 
 # ========== RUN ==========
 if __name__ == "__main__":
