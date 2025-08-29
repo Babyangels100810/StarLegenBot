@@ -42,6 +42,16 @@ BTN_SEARCH    = "🔍 Ապրանքի որոնում"
 BTN_INVITE    = "👥 Հրավիրել ընկերների"
 BTN_MAIN      = "🏠 Գլխավոր մենյու"
 BTN_BACK_MAIN = "⬅️ Վերադառնալ գլխավոր մենյու"
+BTN_HOME = "🏡 Կենցաղային պարագաներ"
+BTN_CAR = "🚗 Ավտոմեքենայի պարագաներ"
+BTN_KITCHEN = "🍳 Խոհանոցային տեխնիկա"
+BTN_WATCH = "⌚️ Սմարթ ժամացույցներ"
+BTN_PC = "💻 Համակարգչային աքսեսուարներ"
+BTN_CARE = "🧴 Խնամքի պարագաներ"
+BTN_SMOKE = "💨 Էլեկտրոնային ծխախոտ"
+BTN_WOMEN = "👗 Կանացի (Շուտով)"
+BTN_MEN = "🧑 Տղամարդու (Շուտով)"
+BTN_KIDS = "🧸 Մանկական (Շուտով)"
 
 def main_menu_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -51,6 +61,12 @@ def main_menu_kb():
     kb.add(BTN_FEEDBACK, BTN_PARTNERS)
     kb.add(BTN_SEARCH, BTN_INVITE)
     kb.add(BTN_MAIN)
+    kb.add(BTN_HOME, BTN_CAR)
+    kb.add(BTN_KITCHEN, BTN_WATCH)
+    kb.add(BTN_PC, BTN_CARE)
+    kb.add(BTN_SMOKE)
+    kb.add(BTN_WOMEN, BTN_MEN, BTN_KIDS)
+
     return kb
 
 # --- Welcome text ---
@@ -138,6 +154,51 @@ def on_category_selected(m: types.Message):
         f"«{m.text}» բաժնի ապրանքները կավելացվեն Part 3-ում։",
         reply_markup=shop_categories_kb()
     )
+# --- CATEGORIES ---
+CATEGORIES = {
+    "home": {
+        "title": "🏡 Կենցաղային պարագաներ",
+        "items": ["BA100810", "BA100811", "BA100812", "BA100813", "BA100814", 
+                  "BA100815", "BA100816", "BA100817", "BA100818", "BA100819", 
+                  "BA100820", "BA100821"]
+    },
+    "car": {
+        "title": "🚗 Ավտոմեքենայի պարագաներ",
+        "items": ["CAR001"]
+    },
+    "kitchen": {
+        "title": "🍳 Խոհանոցային տեխնիկա",
+        "items": []
+    },
+    "watch": {
+        "title": "⌚️ Սմարթ ժամացույցներ",
+        "items": []
+    },
+    "pc": {
+        "title": "💻 Համակարգչային աքսեսուարներ",
+        "items": []
+    },
+    "care": {
+        "title": "🧴 Խնամքի պարագաներ",
+        "items": []
+    },
+    "smoke": {
+        "title": "💨 Էլեկտրոնային ծխախոտ",
+        "items": []
+    },
+    "women": {
+        "title": "👗 Կանացի (Շուտով)",
+        "items": []
+    },
+    "men": {
+        "title": "🧑 Տղամարդու (Շուտով)",
+        "items": []
+    },
+    "kids": {
+        "title": "🧸 Մանկական (Շուտով)",
+        "items": []
+    }
+}
 
 # ========== END PART 2 ==========
 PRODUCTS = {
@@ -526,6 +587,45 @@ CATEGORIES = {
     "season":  {"title": "🌬️ Սեզոնային", "items": []},
     "travel":  {"title": "🧳 Փոքրաքանակ ուղեփ", "items": []},
 }
+@bot.message_handler(func=lambda m: m.text == BTN_HOME)
+def on_home(m):
+    _send_category(m.chat.id, "home")
+
+@bot.message_handler(func=lambda m: m.text == BTN_CAR)
+def on_car(m):
+    _send_category(m.chat.id, "car")
+
+@bot.message_handler(func=lambda m: m.text == BTN_KITCHEN)
+def on_kitchen(m):
+    _send_category(m.chat.id, "kitchen")
+
+@bot.message_handler(func=lambda m: m.text == BTN_WATCH)
+def on_watch(m):
+    _send_category(m.chat.id, "watch")
+
+@bot.message_handler(func=lambda m: m.text == BTN_PC)
+def on_pc(m):
+    _send_category(m.chat.id, "pc")
+
+@bot.message_handler(func=lambda m: m.text == BTN_CARE)
+def on_care(m):
+    _send_category(m.chat.id, "care")
+
+@bot.message_handler(func=lambda m: m.text == BTN_SMOKE)
+def on_smoke(m):
+    _send_category(m.chat.id, "smoke")
+
+@bot.message_handler(func=lambda m: m.text == BTN_WOMEN)
+def on_women(m):
+    _send_category(m.chat.id, "women")
+
+@bot.message_handler(func=lambda m: m.text == BTN_MEN)
+def on_men(m):
+    _send_category(m.chat.id, "men")
+
+@bot.message_handler(func=lambda m: m.text == BTN_KIDS)
+def on_kids(m):
+    _send_category(m.chat.id, "kids")
 
 # ---------------- PRICE HELPERS ----------------
 def price_int(code: str) -> int:
