@@ -144,16 +144,27 @@ def on_shop(m: types.Message):
     bot.send_message(m.chat.id, "Ընտրեք կատեգորիան 👇", reply_markup=shop_categories_kb())
 
 # Յուրաքանչյուր կատեգորիայի վրա սեղմելիս հիմա միայն placeholder
+# Կատեգորիաների ընդհանուր հենդլեր
 @bot.message_handler(func=lambda m: m.text in {
-    CAT_HOME, CAT_RUGS, CAT_AUTO, CAT_SMART, CAT_PC,
-    CAT_CARE, CAT_ECIG, CAT_WOMEN, CAT_MEN, CAT_KIDS
+    BTN_HOME, BTN_CAR, BTN_KITCHEN, BTN_WATCH,
+    BTN_PC, BTN_CARE, BTN_SMOKE, BTN_WOMEN,
+    BTN_MEN, BTN_KIDS
 })
-def on_category_selected(m: types.Message):
-    bot.send_message(
-        m.chat.id,
-        f"«{m.text}» բաժնի ապրանքները կավելացվեն Part 3-ում։",
-        reply_markup=shop_categories_kb()
-    )
+def on_category(m):
+    mapping = {
+        BTN_HOME: "home",
+        BTN_CAR: "car",
+        BTN_KITCHEN: "kitchen",
+        BTN_WATCH: "watch",
+        BTN_PC: "pc",
+        BTN_CARE: "care",
+        BTN_SMOKE: "smoke",
+        BTN_WOMEN: "women",
+        BTN_MEN: "men",
+        BTN_KIDS: "kids",
+    }
+    _send_category(m.chat.id, mapping[m.text])
+
 # --- CATEGORIES ---
 CATEGORIES = {
     "home": {
