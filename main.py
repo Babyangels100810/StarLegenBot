@@ -485,6 +485,19 @@ PRODUCTS = {
 }
 
 # ---------------- CATEGORIES ----------------
+CATEGORIES = {
+    "household": {
+        "title": "🏡 Կենցաղային պարագաներ",
+        "products": [
+            "BA100810","BA100811","BA100812","BA100813","BA100814",
+            "BA100815","BA100816","BA100817","BA100818","BA100819","BA100820"
+        ]
+    },
+    "auto": {
+        "title": "🚗 Ավտոմեքենայի պարագաներ",
+        "products": ["CAR001"]
+    }
+}
 # ========== PART 2/8 — SHOP CATEGORIES ONLY ==========
 
 BTN_CAT_HOME       = "🏠 Կենցաղային պարագաներ"
@@ -512,10 +525,6 @@ def shop_menu_kb():
 def on_shop(m: types.Message):
     bot.send_message(m.chat.id, "🛍 Ընտրեք կատեգորիա՝", reply_markup=shop_menu_kb())
 
-
-@bot.message_handler(func=lambda m: m.text == BTN_SHOP)
-def shop_menu(m: types.Message):
-    bot.send_message(m.chat.id, "🛍 Ընտրեք կատեգորիա", reply_markup=categories_kb())
 
 def _cat_key_by_title(title: str):
     for k, c in CATEGORIES.items():
