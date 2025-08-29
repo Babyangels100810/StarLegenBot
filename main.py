@@ -675,6 +675,23 @@ def _price_int(code: str) -> int:
     digits = "".join(ch for ch in s if ch.isdigit())
     return int(digits or "0")
 
+def _price_int(code: str) -> int:
+    d = PRODUCTS.get(code) or {}
+
+    for key in ("price_new", "price", "new_price", "p"):
+        v = d.get(key)
+        if v is None:
+            continue
+        if isinstance(v, (int, float)):
+            return int(v)
+        s = str(v)
+        digits = "".join(ch for ch in s if ch.isdigit())
+        if digits:
+            return int(digits)
+
+    return 0
+
+
 def _item_caption(code: str, qty: int) -> str:
     d = PRODUCTS.get(code, {})
     title = d.get("title", code)
@@ -685,6 +702,7 @@ def _item_caption(code: str, qty: int) -> str:
         f"{qty} հատ × {p}֏ = <b>{subtotal}֏</b>\n"
         f"Կոդ՝ <code>{code}</code>"
     )
+
 
 def _item_kb(code: str, qty: int):
     kb = types.InlineKeyboardMarkup()
