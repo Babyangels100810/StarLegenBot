@@ -180,6 +180,301 @@ def stub_search(m: types.Message):
 @bot.message_handler(func=lambda m: m.text == BTN_INVITE)
 def stub_invite(m: types.Message):
     bot.send_message(m.chat.id, "👥 Հրավերի հղումը և referral-ը — կավելացնենք հաջորդ մասում։")
+# ---------------- PRODUCTS ----------------
+PRODUCTS = {
+    "BA100810": {
+        "title": "Գորգ – BA100810",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 325,
+        "desc": """✨ Բերեք ձեր տան մեջ նուրբ հմայք այս գեղեցիկ ծաղկային գորգով։
+✔️ Չափս՝ 40×60սմ
+✔️ Կոմպակտ ու հարմար ցանկացած սենյակի համար
+✔️ Հեշտ լվացվող, սայթաքում չի առաջացնում
+✔️ Ավելացնում է ջերմություն և թարմություն ինտերիերին""",
+        "media": [
+            "media/products/BA100810.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100811": {
+        "title": "Գորգ – BA100811",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 287,
+        "desc": """🌸 Թարմացրեք ինտերիերը այս գեղեցիկ գորգով։
+✔️ Չափս՝ 40×60սմ
+✔️ Հարմար միջանցքի, ննջասենյակի կամ հյուրասենյակի համար
+✔️ Միկրոֆիբրե նյութ՝ հեշտ լվացվող""",
+        "media": [
+            "media/products/BA100811.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100812": {
+        "title": "Գորգ – BA100812",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 310,
+        "desc": """🌼 Բարձր որակի գորգ՝ յուրահատուկ դիզայնով։
+✔️ Չափս՝ 40×60սմ
+✔️ Բնական գույներ, հարմար է բոլոր ինտերիերներին
+✔️ Չսահող հիմք՝ ապահով օգտագործման համար""",
+        "media": [
+            "media/products/BA100812.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100813": {
+        "title": "Գորգ – BA100813",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 298,
+        "desc": """🌺 Բերեք ջերմություն և հարմարավետություն ձեր սենյակ։
+✔️ Չափս՝ 40×60սմ
+✔️ Հեշտ մաքրում
+✔️ Կլանում է փոշին և կեղտը""",
+        "media": [
+            "media/products/BA100813.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100814": {
+        "title": "Գորգ – BA100814",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 341,
+        "desc": """🌿 Բնական գույների գորգ՝ գեղեցիկ դիզայնով։
+✔️ Չափս՝ 40×60սմ
+✔️ Կլանում է խոնավությունը
+✔️ Իդեալական է խոհանոց կամ միջանցք""",
+        "media": [
+            "media/products/BA100814.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100815": {
+        "title": "Գորգ – BA100815",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 260,
+        "desc": """🌸 Դարձրեք տունը ավելի հարմարավետ։
+✔️ Չափս՝ 40×60սմ
+✔️ Դիմացկուն և որակյալ նյութ
+✔️ Գեղեցիկ ծաղկային պատկեր""",
+        "media": [
+            "media/products/BA100815.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100816": {
+        "title": "Գորգ – BA100816",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 305,
+        "desc": """🌼 Հարմարավետ և գեղեցիկ գորգ՝ տանը ջերմ մթնոլորտի համար։
+✔️ Չափս՝ 40×60սմ
+✔️ Հեշտ լվացվող
+✔️ Չսահող հիմք""",
+        "media": [
+            "media/products/BA100816.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100817": {
+        "title": "Գորգ – BA100817",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 278,
+        "desc": """🌺 Տնային հարմարավետության լավագույն ընտրությունը։
+✔️ Չափս՝ 40×60սմ
+✔️ Բնական գույներ
+✔️ Թարմացնում է ինտերիերը""",
+        "media": [
+            "media/products/BA100817.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100818": {
+        "title": "Գորգ – BA100818",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 299,
+        "desc": """🌸 Սիրուն դիզայն, որ համապատասխանում է ցանկացած սենյակի։
+✔️ Չափս՝ 40×60սմ
+✔️ Դիմացկուն նյութ
+✔️ Գեղեցիկ ծաղկային պատկեր""",
+        "media": [
+            "media/products/BA100818.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100819": {
+        "title": "Գորգ – BA100819",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 320,
+        "desc": """🌼 Գեղեցիկ և որակյալ գորգ՝ ձեր տան հարմարավետության համար։
+✔️ Չափս՝ 40×60սմ
+✔️ Հեշտ լվացվող
+✔️ Ավելացնում է ջերմություն""",
+        "media": [
+            "media/products/BA100819.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "BA100820": {
+        "title": "Գորգ – BA100820",
+        "price": 1690,
+        "old_price": 2560,
+        "sold": 289,
+        "desc": """🌺 Հարմարավետ և գեղեցիկ գորգ, որը դարձնում է տունը յուրահատուկ։
+✔️ Չափս՝ 40×60սմ
+✔️ Դիմացկուն նյութ
+✔️ Սահող չի, հեշտ մաքրվում է""",
+        "media": [
+            "media/products/BA100820.jpg",
+            "media/products/shared/advantages.jpg",
+            "media/products/shared/interior.jpg",
+            "media/products/shared/care.jpg",
+            "media/products/shared/layers.jpg",
+            "media/products/shared/universal.jpg",
+            "media/products/shared/absorb.jpg",
+        ]
+    },
+    "CAR001": {
+        "title": "Ավտոմաքրող սպունգ – CAR001",
+        "price": 3580,
+        "old_price": 6480,
+        "sold": 212,
+        "desc": """🚗 Պահպանիր մեքենադ մաքուր ու փայլուն՝ մեր նորարարական ավտոմաքրիչով։
+✔️ Հեշտ մաքրում՝ առանց քիմիական նյութերի
+✔️ Դիմացկուն և բազմակի օգտագործման
+✔️ Սպունգ + հեղուկ պահեստի հարմարավետություն""",
+        "media": [
+            "media/products/car_cleaner/CAR001_1.jpg",
+            "media/products/car_cleaner/CAR001_2.jpg",
+            "media/products/car_cleaner/CAR001_3.jpg",
+            "media/products/car_cleaner/CAR001_4.jpg",
+            "media/products/car_cleaner/CAR001_5.jpg",
+            "media/products/car_cleaner/video.mp4",
+        ]
+    }
+}
+
+# ---------------- CATEGORIES ----------------
+CATEGORIES = {
+    "household": {
+        "title": "🏡 Կենցաղային պարագաներ",
+        "products": [
+            "BA100810","BA100811","BA100812","BA100813","BA100814",
+            "BA100815","BA100816","BA100817","BA100818","BA100819","BA100820"
+        ]
+    },
+    "auto": {
+        "title": "🚗 Ավտոմեքենաների պարագաներ",
+        "products": ["CAR001"]
+    }
+}
+
+# ---------------- CATEGORY MENU ----------------
+def categories_kb():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for key, cat in CATEGORIES.items():
+        kb.add(cat["title"])
+    kb.add(BTN_BACK_MAIN, BTN_MAIN)
+    return kb
+
+@bot.message_handler(func=lambda m: m.text == BTN_SHOP)
+def shop_menu(m: types.Message):
+    kb = categories_kb()
+    bot.send_message(m.chat.id, "🛍 Ընտրեք կատեգորիա", reply_markup=kb)
+
+# ---------------- PRODUCT VIEW ----------------
+def product_caption(p: dict) -> str:
+    return (
+        f"<b>{p['title']}</b>\n\n"
+        f"{p['desc']}\n\n"
+        f"Հին գին — {p['old_price']}֏ (−34%)\n"
+        f"Նոր գին — {p['price']}֏\n"
+        f"Վաճառված՝ {p['sold']} հատ"
+    )
+
+def send_product(chat_id, code: str):
+    p = PRODUCTS[code]
+    media = []
+    for i, path in enumerate(p["media"]):
+        if path.endswith(".mp4"):
+            bot.send_video(chat_id, open(path, "rb"),
+                caption=product_caption(p) if i == 0 else None, parse_mode="HTML")
+        else:
+            if i == 0:
+                media.append(InputMediaPhoto(open(path, "rb"),
+                    caption=product_caption(p), parse_mode="HTML"))
+            else:
+                media.append(InputMediaPhoto(open(path, "rb")))
+    if media:
+        bot.send_media_group(chat_id, media)
+
+# ---------------- CATEGORY HANDLER ----------------
+@bot.message_handler(func=lambda m: m.text in [c["title"] for c in CATEGORIES.values()])
+def on_category(m: types.Message):
+    for key, cat in CATEGORIES.items():
+        if m.text == cat["title"]:
+            for code in cat["products"]:
+                send_product(m.chat.id, code)
+            bot.send_message(m.chat.id, "⬅️ Վերադառնալ գլխավոր մենյու", reply_markup=main_menu_kb())
+            break
 
 # ========== RUN ==========
 if __name__ == "__main__":
