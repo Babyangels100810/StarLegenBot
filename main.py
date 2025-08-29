@@ -3,18 +3,19 @@ from dotenv import load_dotenv
 import telebot
 from telebot import types
 
+# --- .env only ---
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise SystemExit("❌ BOT_TOKEN չի գտնվել. .env-ը ճիշտ տեղում/անունո՞վ է։")
+    raise SystemExit("❌ BOT_TOKEN չի գտնվել (.env ֆայլը չկա/սխալ է).")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# Քո ուղարկած ողջույնի խոսքը 1:1
+# Քո վերջնական ողջույնի խոսքը (ինչը գրել էիր)
 GREETING_TEXT = (
     "🐰🌸 Բարի գալուստ BabyAngels 🛍️\n\n"
     "💖 Շնորհակալ ենք, որ ընտրել եք մեզ ❤️ Դուք արդեն մեր սիրելի հաճախորդն եք №{customer_no}։\n\n"
-    "🎁 Լավ լուր․ առաջին պատվերի համար ունեք 5% զեղ్చ — կգտնեք վարկածի ավարտին վճարման պահին։\n\n"
+    "🎁 Լավ լուր․ առաջին պատվերի համար ունեք 5% զեղչ — կգտնեք վարկածի ավարտին վճարման պահին։\n\n"
     "📦 Ի՞նչ կգտնեք մեզ մոտ․\n"
     "• Ժամանակակից ու օգտակար ապրանքներ ամեն օր թարմացվող տեսականու մեջ\n"
     "• Գեղեցիկ դիզայն և անմիջական օգտագործում\n"
@@ -24,7 +25,7 @@ GREETING_TEXT = (
     "👇 Ընտրեք բաժին և սկսեք գնումները հիմա"
 )
 
-# Քո մենյուն՝ ըստ նկարի
+# Քո մենյուն (ինչը նկարում էր)
 MENU_ROWS = [
     ["🛍 Խանութ", "🛒 Զամբյուղ"],
     ["💱 Փոխարկումներ", "👤 Իմ էջը"],
@@ -34,35 +35,31 @@ MENU_ROWS = [
     ["🏠 Գլխավոր մենյու"]
 ]
 
-# Հաճախորդների հաշվիչ (պարզ՝ հիշողության մեջ)
+# Պարզ հաճախորդի հաշվիչ (մինչև տվյալների բազա կապենք)
 customer_counter = 1007
-def get_new_customer_id():
+def next_customer_id():
     global customer_counter
     customer_counter += 1
     return customer_counter
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    customer_no = get_new_customer_id()
+def start(message):
+    cid = next_customer_id()
 
-    # bunny.jpg ուղարկում
+    # լուսանկարը
     photo_path = os.path.join("media", "bunny.jpg")
-    if not os.path.exists(photo_path):
-        bot.send_message(message.chat.id, "⚠️ Չգտա media/bunny.jpg լուսանկարը։")
+    if os.path.exists(photo_path):
+        with open(photo_path, "rb") as p:
+            bot.send_photo(message.chat.id, p, caption=GREETING_TEXT.format(customer_no=cid))
     else:
-        with open(photo_path, "rb") as photo:
-            bot.send_photo(
-                message.chat.id,
-                photo,
-                caption=GREETING_TEXT.format(customer_no=customer_no)
-            )
+        bot.send_message(message.chat.id, GREETING_TEXT.format(customer_no=cid))
 
-    # Մենյու կառուցում
+    # մենյու
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     for row in MENU_ROWS:
         kb.row(*row)
     bot.send_message(message.chat.id, "Մենյուից ընտրեք բաժին 👇", reply_markup=kb)
 
-print("🤖 Bot is running…  /start")
+print("🤖 Running…  /start")
 bot.infinity_polling()
 
