@@ -75,13 +75,24 @@ def on_start(m: types.Message):
     customer_counter += 1
     _save_counter(customer_counter)
 
-    # bunny photo
-    bunny = "media/bunny.jpg"
+    bunny = "media/bunny.jpg"  # փոխի, եթե ֆայլդ ուրիշ տեղ ա
+
     if os.path.exists(bunny):
         with open(bunny, "rb") as ph:
-            bot.send_photo(m.chat.id, ph)
+            bot.send_photo(
+                m.chat.id,
+                ph,
+                caption=welcome_text(customer_counter),
+                reply_markup=main_menu_kb(),
+                parse_mode="HTML",
+            )
+    else:
+        bot.send_message(
+            m.chat.id,
+            welcome_text(customer_counter),
+            reply_markup=main_menu_kb(),
+        )
 
-    bot.send_message(m.chat.id, welcome_text(customer_counter), reply_markup=main_menu_kb())
 
 @bot.message_handler(commands=['menu'])
 def on_menu(m: types.Message):
