@@ -768,6 +768,7 @@ def _cart_summary_kb():
     kb.add(types.InlineKeyboardButton("🏠 Գլխավոր մենյու", callback_data="mainmenu"))
     kb.add(types.InlineKeyboardButton("✅ Շարունակել պատվերով", callback_data="checkout:start"))  # Part 5-ում
     return kb
+types.InlineKeyboardButton("✅ Շարունակել պատվերով", callback_data="checkout_start")
 
 def _send_or_update_summary(chat_id: int, uid: int):
     text = _cart_summary_text(uid)
@@ -1203,6 +1204,11 @@ def _finish_order(chat_id: int, uid: int):
     CHECKOUT_STATE.pop(uid, None)
 
 # ========== END OF PART 5/8 ==========
+# --- Handle "checkout_finish" (Պատվիրել) ---
+@bot.callback_query_handler(func=lambda c: c.data == "checkout_finish")
+def _cb_checkout_finish(call: types.CallbackQuery):
+    bot.answer_callback_query(call.id)
+    _finish_order(call.message.chat.id, call.from_user.id)
 
 # ========== RUN ==========
 if __name__ == "__main__":
