@@ -625,43 +625,43 @@ CATEGORIES = {
 }
 @bot.message_handler(func=lambda m: m.text == BTN_HOME)
 def on_home(m):
-    _send_category(m.chat.id, "home")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_CAR)
 def on_car(m):
-    _send_category(m.chat.id, "car")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_KITCHEN)
 def on_kitchen(m):
-    _send_category(m.chat.id, "kitchen")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_WATCH)
 def on_watch(m):
-    _send_category(m.chat.id, "watch")
+    _sshow_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_PC)
 def on_pc(m):
-    _send_category(m.chat.id, "pc")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_CARE)
 def on_care(m):
-    _send_category(m.chat.id, "care")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_SMOKE)
 def on_smoke(m):
-    _send_category(m.chat.id, "smoke")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_WOMEN)
 def on_women(m):
-    _send_category(m.chat.id, "women")
+    _show_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_MEN)
 def on_men(m):
-    _send_category(m.chat.id, "men")
+    _sshow_category(m.chat.id, mapping[m.text])
 
 @bot.message_handler(func=lambda m: m.text == BTN_KIDS)
 def on_kids(m):
-    _send_category(m.chat.id, "kids")
+    _show_category(m.chat.id, mapping[m.text])
 
 # ---------------- PRICE HELPERS ----------------
 def price_int(code: str) -> int:
@@ -769,6 +769,32 @@ def open_item(chat_id: int, code: str):
 @bot.message_handler(func=lambda m: m.text == BTN_SHOP)
 def shop_entry(m: types.Message):
     show_categories(m.chat.id)
+def show_category(chat_id: int, key: str):
+    cat = CATEGORIES.get(key)
+    if not cat:
+        bot.send_message(chat_id, "Այս կատեգորիան դատարկ է։")
+        return
+
+    title = cat["title"]
+    items = cat["items"]
+
+    if not items:
+        bot.send_message(chat_id, f"{title}\nԱպրանքներ դեռ չկան։")
+        return
+
+    kb = types.InlineKeyboardMarkup()
+    for code in items:
+        prod = PRODUCTS.get(code)
+        if not prod:
+            continue
+        kb.add(
+            types.InlineKeyboardButton(
+                text=prod["title"],
+                callback_data=f"product:{code}"
+            )
+        )
+
+    bot.send_message(chat_id, f"📂 {title}\nԸնտրեք ապրանք 👇", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("shop:"))
 def shop_callbacks(c: types.CallbackQuery):
@@ -1351,3 +1377,4 @@ if __name__ == "__main__":
     bot.infinity_polling(timeout=30, long_polling_timeout=30, skip_pending=True)
 
 # ========== END PART 1 ==========
+
