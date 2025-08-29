@@ -711,22 +711,6 @@ def _item_caption(code: str) -> str:
         price_line = f"<s>{_fmt_cur(p_old)}</s>  <b>{p_new}</b>"
     return f"<b>{title}</b> – <code>{code}</code>\n{price_line}\n👉 Սեղմեք «Ավելացնել զամբյուղ»"
 
-# ---------------- VIEWS ----------------
-def show_categories(chat_id: int):
-    bot.send_message(chat_id, "Ընտրեք կատեգորիա 👇", reply_markup=categories_kb())
-
-def show_category(chat_id: int, cat_key: str):
-    cat = CATEGORIES.get(cat_key)
-    if not cat:
-        bot.send_message(chat_id, "Կատեգորիան չի գտնվել։", reply_markup=categories_kb())
-        return
-    title = cat["title"]
-    items = cat.get("items", [])
-    if not items:
-        bot.send_message(chat_id, f"«{title}» բաժնում ապրանքները կհավելենք շուտով (Part 3).",
-                         reply_markup=categories_kb())
-        return
-
     # յուրաքանչյուր ապրանքի համար՝ preview (ֆոտո + գներ) մեսիջ
     for code in items:
         img = _product_main_image(code)
