@@ -1,17 +1,18 @@
+# -*- coding: utf-8 -*-
 import os
 from dotenv import load_dotenv
 import telebot
 from telebot import types
 
-# --- .env only ---
+# .env ONLY
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise SystemExit("❌ BOT_TOKEN չի գտնվել (.env ֆայլը չկա/սխալ է).")
+    raise SystemExit("❌ BOT_TOKEN չի գտնվել (.env ֆայլը main.py-ի կողքին է, և մեջը կա BOT_TOKEN=...)")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 
-# Քո վերջնական ողջույնի խոսքը (ինչը գրել էիր)
+# ——— Ողջույնի խոսք (քո հաստատած) ———
 GREETING_TEXT = (
     "🐰🌸 Բարի գալուստ BabyAngels 🛍️\n\n"
     "💖 Շնորհակալ ենք, որ ընտրել եք մեզ ❤️ Դուք արդեն մեր սիրելի հաճախորդն եք №{customer_no}։\n\n"
@@ -25,7 +26,7 @@ GREETING_TEXT = (
     "👇 Ընտրեք բաժին և սկսեք գնումները հիմա"
 )
 
-# Քո մենյուն (ինչը նկարում էր)
+# ——— Քո մենյուն՝ բառացի ———
 MENU_ROWS = [
     ["🛍 Խանութ", "🛒 Զամբյուղ"],
     ["💱 Փոխարկումներ", "👤 Իմ էջը"],
@@ -35,31 +36,42 @@ MENU_ROWS = [
     ["🏠 Գլխավոր մենյու"]
 ]
 
-# Պարզ հաճախորդի հաշվիչ (մինչև տվյալների բազա կապենք)
-customer_counter = 1007
-def next_customer_id():
-    global customer_counter
-    customer_counter += 1
-    return customer_counter
+# ——— Հաճախորդի համար ———
+_customer = 1007
+def next_customer():
+    global _customer
+    _customer += 1
+    return _customer
+
+def send_main_menu(chat_id: int):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for row in MENU_ROWS:
+        kb.row(*row)
+    bot.send_message(chat_id, "Մենյուից ընտրեք բաժին 👇", reply_markup=kb)
 
 @bot.message_handler(commands=['start'])
-def start(message):
-    cid = next_customer_id()
-
-    # լուսանկարը
+def start(message: types.Message):
+    cid = next_customer()
     photo_path = os.path.join("media", "bunny.jpg")
     if os.path.exists(photo_path):
         with open(photo_path, "rb") as p:
             bot.send_photo(message.chat.id, p, caption=GREETING_TEXT.format(customer_no=cid))
     else:
         bot.send_message(message.chat.id, GREETING_TEXT.format(customer_no=cid))
+    send_main_menu(message.chat.id)
 
-    # մենյու
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for row in MENU_ROWS:
-        kb.row(*row)
-    bot.send_message(message.chat.id, "Մենյուից ընտրեք բաժին 👇", reply_markup=kb)
+# ——— Մնացած կոճակներին տալիս եմ placeholder, որ բոտը հանգիստ աշխատի ———
+ALL_BTNS = {
+    "🛍 Խանութ","🛒 Զամբյուղ","💱 Փոխարկումներ","👤 Իմ էջը","📊 Օրվա կուրսեր",
+    "🏆 Լավագույններ","💬 Կապ մեզ հետ","🤝 Բիզնես գործընկերներ",
+    "🔍 Ապրանքի որոնում","👥 Հրավիրել ընկերների","🏠 Գլխավոր մենյու"
+}
+@bot.message_handler(func=lambda m: m.text in ALL_BTNS)
+def buttons_placeholder(m: types.Message):
+    if m.text == "🏠 Գլխավոր մենյու":
+        send_main_menu(m.chat.id)
+    else:
+        bot.send_message(m.chat.id, f"{m.text} — կառուցման մեջ է։")
 
 print("🤖 Running…  /start")
-bot.infinity_polling()
-
+bot.infinity_polling(timeout=60, long_polling_timeout=30)
