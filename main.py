@@ -145,25 +145,28 @@ def on_shop(m: types.Message):
 
 # Յուրաքանչյուր կատեգորիայի վրա սեղմելիս հիմա միայն placeholder
 # Կատեգորիաների ընդհանուր հենդլեր
-@bot.message_handler(func=lambda m: m.text in {
+CAT_BTNS = {
     BTN_HOME, BTN_CAR, BTN_KITCHEN, BTN_WATCH,
     BTN_PC, BTN_CARE, BTN_SMOKE, BTN_WOMEN,
     BTN_MEN, BTN_KIDS
-})
-def on_category(m):
+}
+
+@bot.message_handler(func=lambda m: m.text in CAT_BTNS)
+def on_category(m: types.Message):
     mapping = {
-        BTN_HOME: "home",
-        BTN_CAR: "car",
+        BTN_HOME:  "home",
+        BTN_CAR:   "car",
         BTN_KITCHEN: "kitchen",
         BTN_WATCH: "watch",
-        BTN_PC: "pc",
-        BTN_CARE: "care",
+        BTN_PC:    "pc",
+        BTN_CARE:  "care",
         BTN_SMOKE: "smoke",
         BTN_WOMEN: "women",
-        BTN_MEN: "men",
-        BTN_KIDS: "kids",
+        BTN_MEN:   "men",
+        BTN_KIDS:  "kids",
     }
-    _send_category(m.chat.id, mapping[m.text])
+    show_category(m.chat.id, mapping[m.text])
+
 
 # --- CATEGORIES ---
 CATEGORIES = {
