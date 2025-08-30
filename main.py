@@ -125,32 +125,36 @@ async def go_back(message: Message):
 # =========================
 # ՄԱՍ 2 — ԽԱՆՈՒԹ (CATALOG)
 # =========================
+from aiogram import F
 from aiogram.filters import Command
 from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    InputMediaPhoto, InputMediaVideo, FSInputFile
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 )
-import json, os
+import os, json
 
-# --- ուղիներ / կոնֆիգ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 PRODUCTS_JSON = os.path.join(DATA_DIR, "products.json")
-ITEMS_PER_PAGE = 6  # քանի ապրանք տեսնեմ մեկ էջում
+ITEMS_PER_PAGE = 20  # մի անգամում քանի քարտ ցույց տալ
 
-# ---------- ՕԳՆԱԿԱՆՆԵՐ ----------
+# ---------- helpers ----------
 def _load_json_file(fp: str) -> dict:
     with open(fp, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def _abs_media_path(p: str) -> str:
+    """ընդունում է ինչպես 'media/products/BA100810.jpg', այնպես էլ 'BA100810.jpg'"""
+    p = p.lstrip("/\\")
+    if p.startswith("media/"):
+        return os.path.join(BASE_DIR, p)
+    return os.path.join(BASE_DIR, "media", "products", p)
+
 def get_categories() -> list[dict]:
-    data = _load_json_file(PRODUCTS_JSON)
-    return data.get("categories", [])
+    return _load_json_file(PRODUCTS_JSON).get("categories", [])
 
 def get_products_by_cat(cat_id: int) -> list[dict]:
     data = _load_json_file(PRODUCTS_JSON)
-    prods = data.get("products", [])
-    return [p for p in prods if int(p.get("category_id", 0)) == int(cat_id)]
+    return [p for p in data.get("products", []) if int(p.get("category_id", 0)) == int(cat_id)]
 
 def get_product_by_code(code: str) -> dict | None:
     data = _load_json_file(PRODUCTS_JSON)
@@ -159,229 +163,152 @@ def get_product_by_code(code: str) -> dict | None:
             return p
     return None
 
-def product_caption(p: dict, lang: str) -> str:
-    title = p.get("title", "")
-    price = p.get("price")
-    old = p.get("price_old")
-    code = p.get("code")
-    desc = p.get("description_md") or ""
-    line_price = f"<s>{old}֏</s> {price}֏" if old else f"{price}֏"
-    return (
-        f"<b>{title}</b>\n"
-        f"{line_price}\n"
-        f"<b>ID</b> {code}\n\n"
-        f"{desc}"
-    )
-
-def _resolve_file(path: str) -> FSInputFile:
-    # path-ը products.json-ում հարաբերական է նախագծին
-    real = os.path.join(BASE_DIR, path) if not os.path.isabs(path) else path
-    return FSInputFile(real)
-
-# ---------- ՔԼԱՎԻԱՏՈՒՐԱՆԵՐ ----------
+# ---------- keyboards ----------
 def categories_kb(lang: str) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text=f"🗂 {c['title']}", callback_data=f"shop:cat:{c['id']}:p:1")]
-        for c in get_categories()
-    ]
+    rows = [[InlineKeyboardButton(text=f"📂 {c['title']}", callback_data=f"shop:cat:{c['id']}")] for c in get_categories()]
     rows.append([InlineKeyboardButton(text=t("btn.close", lang), callback_data="shop:close")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
-def products_page_kb(lang: str, cat_id: int, page: int, total_pages: int) -> InlineKeyboardMarkup:
-    nav = []
-    if page > 1:
-        nav.append(InlineKeyboardButton(text=t("btn.prev", lang), callback_data=f"shop:cat:{cat_id}:p:{page-1}"))
-    nav.append(InlineKeyboardButton(text=t("btn.close", lang), callback_data="shop:close"))
-    if page < total_pages:
-        nav.append(InlineKeyboardButton(text=t("btn.next", lang), callback_data=f"shop:cat:{cat_id}:p:{page+1}"))
-    return InlineKeyboardMarkup(inline_keyboard=[nav])
+def product_card_kb(code: str, cat_id: int, lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("btn.view", lang) if t("btn.view", lang) else "👁 Դիտել",
+                              callback_data=f"shop:detail:{code}:{cat_id}")],
+        [InlineKeyboardButton(text=t("menu.back", lang), callback_data=f"shop:back:{cat_id}")],
+        [InlineKeyboardButton(text=t("btn.close", lang), callback_data="shop:close")]
+    ])
 
-def product_kb(p: dict, lang: str, cat_id: int, page: int, idx: int) -> InlineKeyboardMarkup:
-    gallery = (p.get("images") or []) + (p.get("promo_images") or [])
-    has_prev = idx > 0
-    has_next = idx + 1 < len(gallery)
-
-    row_nav = []
-    if has_prev:
-        row_nav.append(InlineKeyboardButton(text=t("btn.prev", lang),
-                                            callback_data=f"shop:view:{p['code']}:{cat_id}:{page}:i:{idx-1}"))
-    if has_next:
-        row_nav.append(InlineKeyboardButton(text=t("btn.next", lang),
-                                            callback_data=f"shop:view:{p['code']}:{cat_id}:{page}:i:{idx+1}"))
-
-    rows = []
-    if row_nav:
-        rows.append(row_nav)
-
-    # եթե վիդեո կա՝ հավելյալ կոճակ
-    if p.get("video"):
-        rows.append([InlineKeyboardButton(text=t("btn.video", lang),
-                                          callback_data=f"shop:vid:{p['code']}:{cat_id}:{page}")])
-
-    rows.append([InlineKeyboardButton(text=t("btn.back", lang),
-                                      callback_data=f"shop:back:{cat_id}:{page}")])
-    rows.append([InlineKeyboardButton(text=t("btn.close", lang), callback_data="shop:close")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-# ---------- ԲԱՑԵԼ ԽԱՆՈՒԹ ----------
-OPEN_SHOP_TEXTS = {
-    "🛍 Խանութ", "Խանութ",
-    "🛍 Магазин", "Магазин",
-    "🛍 Shop", "Shop",
-}
-
+# ---------- open shop ----------
 @dp.message(Command("shop"))
-@dp.message(F.text.in_(OPEN_SHOP_TEXTS))
+@dp.message(F.text.in_(["🛍 Խանութ", "🛍 Магазин", "🛍 Shop", "Խանութ", "Магазин", "Shop"]))
 async def open_shop(message: Message):
     lang = get_lang(message.from_user.id)
-    try:
-        cats = get_categories()
-        if not cats:
-            await message.answer(t("catalog.noprod", lang))
-            return
-        await message.answer(t("catalog.choose", lang), reply_markup=categories_kb(lang))
-    except Exception as e:
-        await message.answer(f"⚠️ Shop error: {e}")
+    cats = get_categories()
+    if not cats:
+        await message.answer(t("catalog.noprod", lang))
+        return
+    await message.answer(t("catalog.choose", lang), reply_markup=categories_kb(lang))
 
-# ---------- ՑՈՒՑԱԴՐԵԼ ԿԱՏԵԳՈՐԻԱ ----------
+# ----- helper: show list of product CARDS for a category -----
+async def _show_category_cards(target_message, cat_id: int, lang: str):
+    prods = get_products_by_cat(cat_id)
+    if not prods:
+        await target_message.answer(t("catalog.noprod", lang))
+        return
+
+    # վերնագիր
+    await target_message.answer(f"📦 <b>{t('catalog.products', lang) or 'Ապրանքներ'}</b>")
+
+    # քարտերով ցուցադրում
+    for p in prods[:ITEMS_PER_PAGE]:
+        # առաջին նկարը
+        first_img = None
+        imgs = p.get("images", [])
+        if imgs:
+            img_path = _abs_media_path(imgs[0])
+            if os.path.exists(img_path):
+                first_img = FSInputFile(img_path)
+
+        title = p.get("title", "Без названия")
+        price = p.get("price", "")
+        old = p.get("price_old") or p.get("old_price")
+        code = p.get("code")
+
+        caption = f"<b>{title}</b>\n"
+        if old:
+            caption += f"<s>{old}֏</s> "
+        caption += f"{price}֏\nID {code}"
+
+        if first_img:
+            await target_message.answer_photo(
+                first_img,
+                caption=caption,
+                reply_markup=product_card_kb(code, cat_id, lang)
+            )
+        else:
+            await target_message.answer(
+                caption, reply_markup=product_card_kb(code, cat_id, lang)
+            )
+
+# ---------- choose category ----------
 @dp.callback_query(F.data.startswith("shop:cat:"))
-async def show_category(call: CallbackQuery):
-    lang = get_lang(call.from_user.id)
+async def show_category(cb: CallbackQuery):
+    lang = get_lang(cb.from_user.id)
+    cat_id = int(cb.data.split(":")[2])
     try:
-        # shop:cat:{id}:p:{page}
-        parts = call.data.split(":")
-        cat_id = int(parts[2])
-        page = int(parts[4]) if len(parts) >= 5 else 1
-
-        prods = get_products_by_cat(cat_id)
-        if not prods:
-            await call.message.edit_text(t("catalog.noprod", lang))
-            await call.answer()
-            return
-
-        total_pages = max(1, (len(prods) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
-        page = max(1, min(page, total_pages))
-        start = (page - 1) * ITEMS_PER_PAGE
-        slice_ = prods[start:start + ITEMS_PER_PAGE]
-
-        # ցուցակի տեքստը
-        lines = [
-            f"📦 <b>{t('catalog.products', lang)}</b> • "
-            + t('catalog.page', lang).replace('{p}', str(page)).replace('{t}', str(total_pages)),
-            ""
-        ]
-        for p in slice_:
-            lines.append(f"• <b>{p.get('title')}</b> — {p.get('price')}֏  <code>{p.get('code')}</code>")
-
-        # սրան տակ՝ յուրաքանչյուրի համար «Դիտել» կոճակ
-        btn_rows = [[InlineKeyboardButton(text=f"👁 {t('btn.view', lang)}: {p['code']}",
-                                          callback_data=f"shop:view:{p['code']}:{cat_id}:{page}:i:0")]
-                    for p in slice_]
-        btn_rows.append([InlineKeyboardButton(text=t("btn.close", lang), callback_data="shop:close")])
-        kb = InlineKeyboardMarkup(inline_keyboard=btn_rows)
-
-        try:
-            await call.message.edit_text("\n".join(lines), reply_markup=kb)
-        except Exception:
-            # եթե նախորդը մեդիա էր և edit_text չի ստացվում՝ ուղարկենք նորը
-            await call.message.answer("\n".join(lines), reply_markup=kb)
-        await call.answer()
-    except Exception as e:
-        await call.answer("⚠️ Error")
-        await call.message.answer(f"⚠️ Shop error: {e}")
-
-# ---------- ԴԻՏԵԼ ԱՊՐԱՆՔ (սլայդ) ----------
-@dp.callback_query(F.data.startswith("shop:view:"))
-async def view_product(call: CallbackQuery):
-    lang = get_lang(call.from_user.id)
-    try:
-        # shop:view:{code}:{cat_id}:{page}:i:{idx}
-        parts = call.data.split(":")
-        code = parts[2]
-        cat_id = int(parts[3])
-        page = int(parts[4])
-        idx = int(parts[6]) if len(parts) >= 7 else 0
-
-        p = get_product_by_code(code)
-        if not p:
-            await call.answer("Not found"); return
-
-        gallery = (p.get("images") or []) + (p.get("promo_images") or [])
-        if not gallery:
-            await call.answer("No images"); return
-
-        idx = max(0, min(idx, len(gallery) - 1))
-        path = gallery[idx]
-        caption = product_caption(p, lang)
-        kb = product_kb(p, lang, cat_id, page, idx)
-
-        # ՓՈՐՁՈՒՄՆԵՐ՝ նախ փորձենք edit_media, եթե չստացվեց՝ ուղարկենք նոր
-        try:
-            media = InputMediaPhoto(media=_resolve_file(path), caption=caption, parse_mode="HTML")
-            await call.message.edit_media(media=media, reply_markup=kb)
-        except Exception:
-            await call.message.answer_photo(_resolve_file(path), caption=caption, reply_markup=kb, parse_mode="HTML")
-
-        await call.answer()
-    except Exception as e:
-        await call.answer("⚠️ Error")
-        await call.message.answer(f"⚠️ Shop error: {e}")
-
-# ---------- ՎԻԴԵՈ ----------
-@dp.callback_query(F.data.startswith("shop:vid:"))
-async def view_video(call: CallbackQuery):
-    lang = get_lang(call.from_user.id)
-    try:
-        # shop:vid:{code}:{cat_id}:{page}
-        parts = call.data.split(":")
-        code = parts[2]
-        cat_id = int(parts[3])
-        page = int(parts[4])
-
-        p = get_product_by_code(code)
-        if not p or not p.get("video"):
-            await call.answer("No video"); return
-
-        caption = product_caption(p, lang)
-        kb = product_kb(p, lang, cat_id, page, 0)
-        try:
-            media = InputMediaVideo(media=_resolve_file(p["video"]), caption=caption, parse_mode="HTML")
-            await call.message.edit_media(media=media, reply_markup=kb)
-        except Exception:
-            await call.message.answer_video(_resolve_file(p["video"]), caption=caption, reply_markup=kb, parse_mode="HTML")
-
-        await call.answer()
-    except Exception as e:
-        await call.answer("⚠️ Error")
-        await call.message.answer(f"⚠️ Shop error: {e}")
-
-# ---------- ՎԵՐԱԴԱՌՆԱԼ ԿԱՏԵԳՈՐԻԱՅԻ ԼԻՍՏ ----------
-@dp.callback_query(F.data.startswith("shop:back:"))
-async def back_to_list(call: CallbackQuery):
-    lang = get_lang(call.from_user.id)
-    try:
-        # shop:back:{cat_id}:{page}
-        parts = call.data.split(":")
-        cat_id = int(parts[2])
-        page = int(parts[3])
-        # պարզապես կանչում ենք նույն handler-ը
-        call.data = f"shop:cat:{cat_id}:p:{page}"
-        await show_category(call)
-    except Exception as e:
-        await call.answer("⚠️ Error")
-        await call.message.answer(f"⚠️ Shop error: {e}")
-
-# ---------- ՓԱԿԵԼ ----------
-@dp.callback_query(F.data == "shop:close")
-async def shop_close(call: CallbackQuery):
-    lang = get_lang(call.from_user.id)
-    try:
-        await call.message.delete()
+        # չփորձենք edit անել ֆոտո/թեքստ՝ ուղարկում ենք նոր
+        await cb.message.delete()
     except Exception:
         pass
-    await call.message.answer(t("menu.main", lang), reply_markup=main_menu(lang))
-    await call.answer()
+    await _show_category_cards(cb.message, cat_id, lang)
+    await cb.answer()
 
+# ---------- view details (slideshow + video + description) ----------
+@dp.callback_query(F.data.startswith("shop:detail:"))
+async def view_product(cb: CallbackQuery):
+    lang = get_lang(cb.from_user.id)
+    _, _, code, cat_id = cb.data.split(":")
+    cat_id = int(cat_id)
+    product = get_product_by_code(code)
+    if not product:
+        await cb.answer("Չի գտնվել")
+        return
+
+    # ուղարկում ենք ԲՈԼՈՐ նկարները (images + promo_images)
+    all_imgs = list(product.get("images", [])) + list(product.get("promo_images", []))
+    sent_any = False
+    for img in all_imgs:
+        p = _abs_media_path(img)
+        if os.path.exists(p):
+            await cb.message.answer_photo(FSInputFile(p))
+            sent_any = True
+
+    # video, եթե կա
+    v = product.get("video")
+    if v:
+        vp = _abs_media_path(v)
+        if os.path.exists(vp):
+            await cb.message.answer_video(FSInputFile(vp))
+
+    # վերջնական տեքստ քարտ (անուն, գներ, ID, նկարագրություն)
+    title = product.get("title", "")
+    price = product.get("price", "")
+    old = product.get("price_old") or product.get("old_price")
+    desc = product.get("description_md") or product.get("description") or ""
+    code = product.get("code")
+
+    text = f"<b>{title}</b>\n"
+    if old:
+        text += f"<s>{old}֏</s> "
+    text += f"{price}֏\nID {code}\n\n{desc}"
+
+    await cb.message.answer(
+        text,
+        reply_markup=product_card_kb(code, cat_id, lang)
+    )
+    await cb.answer()
+
+# ---------- back to category ----------
+@dp.callback_query(F.data.startswith("shop:back:"))
+async def shop_back(cb: CallbackQuery):
+    lang = get_lang(cb.from_user.id)
+    cat_id = int(cb.data.split(":")[2])
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
+    await _show_category_cards(cb.message, cat_id, lang)
+    await cb.answer()
+
+# ---------- close and go home ----------
+@dp.callback_query(F.data == "shop:close")
+async def shop_close(cb: CallbackQuery):
+    lang = get_lang(cb.from_user.id)
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
+    await cb.message.answer(t("menu.main", lang), reply_markup=main_menu(lang))
+    await cb.answer()
 
 # --- entry ---
 async def main():
